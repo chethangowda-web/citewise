@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -29,6 +30,10 @@ class Generation:
 
 class Generator(Protocol):
     def generate(self, system: str, prompt: str) -> Generation: ...
+
+    def stream(self, system: str, prompt: str) -> Iterator["str | Generation"]:
+        """Yields text deltas as they arrive, then one final Generation (full text plus token usage)."""
+        ...
 
 
 class GeminiClient:
@@ -65,6 +70,35 @@ class GeminiClient:
                 last_error = e
         raise LLMUnavailable(str(last_error)) from last_error
 
+    def stream(self, system: str, prompt: str) -> Iterator[str | Generation]:
+        models = [m for m in (self._s.gemini_model, self._s.gemini_fallback_model) if m]
+        last_error: Exception | None = None
+        for model in models:
+            started = False
+            try:
+                parts: list[str] = []
+                usage = None
+                for chunk in self._client.models.generate_content_stream(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(system_instruction=system, temperature=0.1),
+                ):
+                    usage = chunk.usage_metadata or usage
+                    if chunk.text:
+                        started = True
+                        parts.append(chunk.text)
+                        yield chunk.text
+                yield Generation(
+                    "".join(parts).strip(), model,
+                    getattr(usage, "prompt_token_count", 0) or 0, getattr(usage, "candidates_token_count", 0) or 0,
+                )
+                return
+            except (errors.ServerError, errors.ClientError) as e:
+                if started:  # text already reached the caller; cannot silently switch models
+                    raise LLMUnavailable(str(e)) from e
+                last_error = e
+        raise LLMUnavailable(str(last_error)) from last_error
+
     @_retry
     def _generate_with(self, model: str, system: str, prompt: str) -> Generation:
         res = self._client.models.generate_content(
@@ -90,6 +124,28 @@ class GroqClient:
     def generate(self, system: str, prompt: str) -> Generation:
         try:
             return self._generate(system, prompt)
+        except groq.APIError as e:
+            raise LLMUnavailable(str(e)) from e
+
+    def stream(self, system: str, prompt: str) -> Iterator[str | Generation]:
+        try:
+            parts: list[str] = []
+            usage = None
+            for chunk in self._client.chat.completions.create(
+                model=self._model,
+                temperature=0.1,
+                stream=True,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            ):
+                usage = getattr(chunk, "usage", None) or getattr(getattr(chunk, "x_groq", None), "usage", None) or usage
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    parts.append(delta)
+                    yield delta
+            yield Generation(
+                "".join(parts).strip(), self._model,
+                getattr(usage, "prompt_tokens", 0) or 0, getattr(usage, "completion_tokens", 0) or 0,
+            )
         except groq.APIError as e:
             raise LLMUnavailable(str(e)) from e
 
@@ -134,6 +190,24 @@ class FallbackGenerator:
             try:
                 return gen.generate(system, prompt)
             except LLMUnavailable as e:
+                last = e
+                if i + 1 < len(self._generators):
+                    log.warning("llm_fallback", extra={"failed": type(gen).__name__, "error": str(e)[:300]})
+        raise LLMUnavailable(str(last)) from last
+
+
+    def stream(self, system: str, prompt: str) -> Iterator[str | Generation]:
+        last: LLMUnavailable | None = None
+        for i, gen in enumerate(self._generators):
+            started = False
+            try:
+                for item in gen.stream(system, prompt):
+                    started = started or isinstance(item, str)
+                    yield item
+                return
+            except LLMUnavailable as e:
+                if started:  # cannot take back text the caller already received
+                    raise
                 last = e
                 if i + 1 < len(self._generators):
                     log.warning("llm_fallback", extra={"failed": type(gen).__name__, "error": str(e)[:300]})

@@ -1,21 +1,23 @@
+import json
 import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.config import get_settings
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.llm.providers import LLMUnavailable
 from app.models import ChatMessage, ChatSession, Document, User
 from app.observability import rate_limit
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
-from app.rag.pipeline import ChatResult, answer_question
+from app.rag.pipeline import ChatResult, answer_question, run_pipeline
 from app.rag.retriever import visible_to
 
 router = APIRouter()
@@ -94,6 +96,10 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User | None = De
     except LLMUnavailable as e:
         log.warning("llm_unavailable", extra={"error": str(e)[:400]})  # root cause (quota, outage) for operators
         raise HTTPException(503, "The language model is temporarily unavailable. Please try again shortly.")
+    return _response(result, save_turn(db, user, req.session_id, result))
+
+
+def _response(result: ChatResult, session_id: str) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
         sources=[SourceOut(**vars(s)) for s in result.sources],
@@ -101,7 +107,36 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User | None = De
         latency_ms=result.latency_ms,
         outcome=result.outcome,
         tokens=result.prompt_tokens + result.completion_tokens,
-        session_id=save_turn(db, user, req.session_id, result),
+        session_id=session_id,
+    )
+
+
+def _sse(event: str, data: object) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/chat/stream", dependencies=[Depends(require_api_key), Depends(rate_limit)])
+def chat_stream(req: ChatRequest, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    """Server-sent events: `stage` as the pipeline advances, `draft` (full text so far, PII-redacted) while the
+    model writes, then `done` with the verified answer, which replaces the draft. `error` if the model is down."""
+    if req.session_id:
+        _own_session(db, req.session_id, user)  # a plain 404 before the stream opens
+
+    def events():
+        with SessionLocal() as stream_db:  # the request-scoped session may be closed before the stream ends
+            try:
+                for kind, payload in run_pipeline(stream_db, req.question, _uid(user), stream=True):
+                    if kind == "result":
+                        sid = save_turn(stream_db, user, req.session_id, payload)  # type: ignore[arg-type]
+                        yield _sse("done", _response(payload, sid).model_dump())  # type: ignore[arg-type]
+                    else:
+                        yield _sse(kind, {"stage" if kind == "stage" else "text": payload})
+            except LLMUnavailable as e:
+                log.warning("llm_unavailable", extra={"error": str(e)[:400]})
+                yield _sse("error", {"detail": "The language model is temporarily unavailable. Please try again shortly."})
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
 
 

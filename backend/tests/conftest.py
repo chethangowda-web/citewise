@@ -73,6 +73,15 @@ class FakeLLM:
             raise self.error
         return Generation(self.reply, "fake-model", 120, 25)
 
+    def stream(self, system, prompt):
+        self.calls.append((system, prompt))
+        if self.error:
+            raise self.error
+        words = self.reply.split(" ")
+        for i, w in enumerate(words):
+            yield w + (" " if i < len(words) - 1 else "")
+        yield Generation(self.reply, "fake-model", 120, 25)
+
 
 @pytest.fixture(autouse=True)
 def _wire_fakes(monkeypatch):

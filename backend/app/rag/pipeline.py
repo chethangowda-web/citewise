@@ -1,14 +1,15 @@
 import logging
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.guardrails.input import InputResult, check_input
+from app.guardrails.input import InputResult, check_input, redact_pii
 from app.guardrails.ml_guard import ml_screen
 from app.guardrails.output import CITATION_RE, NO_ANSWER, _normalize_citations, check_output
-from app.llm.providers import Generation, get_embedder, get_generator
+from app.llm.providers import Generation, LLMUnavailable, get_embedder, get_generator
 from app.models import AuditLog
 from app.observability import request_id_var
 from app.rag.retriever import Retrieved, hybrid_search
@@ -61,13 +62,35 @@ def _outcome(flags: list[str]) -> str:
     return "answered"
 
 
+def _safe_draft(text: str) -> str:
+    """What may be shown while the answer is still being written.
+
+    Only whole words (so a half-typed number is never shown), citations normalised and PII redacted.
+    The verified answer that follows always replaces this.
+    """
+    cut = max(text.rfind(" "), text.rfind("\n"))
+    return redact_pii(_normalize_citations(text[:cut]))[0] if cut > 0 else ""
+
+
 def answer_question(db: Session, raw_question: str, user_id: int | None = None) -> ChatResult:
+    for kind, payload in run_pipeline(db, raw_question, user_id):
+        if kind == "result":
+            return payload  # type: ignore[return-value]
+    raise RuntimeError("pipeline produced no result")
+
+
+def run_pipeline(
+    db: Session, raw_question: str, user_id: int | None = None, stream: bool = False
+) -> Iterator[tuple[str, object]]:
+    """Yields ("stage", name) as work progresses, ("draft", text) while streaming, then ("result", ChatResult)."""
     s = get_settings()
     start = time.perf_counter()
     flags: list[str] = []
     sources: list[Source] = []
     gen: Generation | None = None
+    parts: list[str] = []
 
+    yield "stage", "screening"
     if s.guardrails_enabled:
         inp = check_input(raw_question, s.max_question_chars)
     else:  # evaluation baseline: question goes through untouched
@@ -82,6 +105,7 @@ def answer_question(db: Session, raw_question: str, user_id: int | None = None) 
     if inp.blocked:
         answer = inp.reason
     else:
+        yield "stage", "retrieving"
         qvec = get_embedder().embed([inp.text], is_query=True)[0]
         hits = hybrid_search(db, inp.text, qvec, s.top_k, s.candidate_k, viewer_id=user_id)
         if s.guardrails_enabled:
@@ -90,7 +114,24 @@ def answer_question(db: Session, raw_question: str, user_id: int | None = None) 
             flags.append("no_relevant_context")
             answer = NO_ANSWER
         else:
-            gen = get_generator().generate(SYSTEM_PROMPT, _build_prompt(inp.text, hits))
+            yield "stage", "drafting"
+            prompt = _build_prompt(inp.text, hits)
+            if stream:
+                shown = ""
+                for item in get_generator().stream(SYSTEM_PROMPT, prompt):
+                    if isinstance(item, str):
+                        parts.append(item)
+                        draft = _safe_draft("".join(parts)) if s.guardrails_enabled else "".join(parts)
+                        if draft != shown:
+                            shown = draft
+                            yield "draft", draft
+                    else:
+                        gen = item
+                if gen is None:
+                    raise LLMUnavailable("The model returned no response")
+            else:
+                gen = get_generator().generate(SYSTEM_PROMPT, prompt)
+            yield "stage", "verifying"
             if s.guardrails_enabled:
                 out = check_output(gen.text, len(hits))
                 flags += out.flags
@@ -124,4 +165,4 @@ def answer_question(db: Session, raw_question: str, user_id: int | None = None) 
                "prompt_tokens": result.prompt_tokens, "completion_tokens": result.completion_tokens,
                "sources": [x.source for x in sources], "guardrails": s.guardrails_enabled},
     )
-    return result
+    yield "result", result
