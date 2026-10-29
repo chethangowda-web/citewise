@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -24,10 +24,21 @@ def _row(chunk: Chunk, doc: Document, distance: float, score: float) -> Retrieve
     return Retrieved(chunk.id, doc.title, doc.source, chunk.content, similarity=1 - float(distance), score=score)
 
 
-def vector_search(db: Session, query_vec: list[float], k: int) -> list[Retrieved]:
+def visible_to(viewer_id: int | None):
+    """Shared documents (no owner) plus the viewer's own private ones."""
+    if viewer_id is None:
+        return Document.owner_id.is_(None)
+    return or_(Document.owner_id.is_(None), Document.owner_id == viewer_id)
+
+
+def vector_search(db: Session, query_vec: list[float], k: int, viewer_id: int | None = None) -> list[Retrieved]:
     distance = Chunk.embedding.cosine_distance(query_vec)
     rows = db.execute(
-        select(Chunk, Document, distance).join(Document).where(Chunk.quarantined.is_(False)).order_by(distance).limit(k)
+        select(Chunk, Document, distance)
+        .join(Document)
+        .where(Chunk.quarantined.is_(False), visible_to(viewer_id))
+        .order_by(distance)
+        .limit(k)
     ).all()
     return [_row(c, d, dist, 0.0) for c, d, dist in rows]
 
@@ -37,7 +48,9 @@ def _or_query(text: str) -> str:
     return " | ".join(words)
 
 
-def keyword_search(db: Session, query: str, query_vec: list[float], k: int, mode: str = "or") -> list[Retrieved]:
+def keyword_search(
+    db: Session, query: str, query_vec: list[float], k: int, mode: str = "or", viewer_id: int | None = None
+) -> list[Retrieved]:
     """Postgres full-text search.
 
     mode="and": every query word must appear in the chunk (websearch semantics): precise but, for a
@@ -57,7 +70,7 @@ def keyword_search(db: Session, query: str, query_vec: list[float], k: int, mode
     rows = db.execute(
         select(Chunk, Document, distance)
         .join(Document)
-        .where(ts_vec.op("@@")(ts_query), Chunk.quarantined.is_(False))
+        .where(ts_vec.op("@@")(ts_query), Chunk.quarantined.is_(False), visible_to(viewer_id))
         .order_by(func.ts_rank_cd(ts_vec, ts_query).desc())
         .limit(k)
     ).all()
@@ -91,13 +104,17 @@ def hybrid_search(
     keyword_mode: str | None = None,
     rerank: bool | None = None,
     reranker=None,
+    viewer_id: int | None = None,
 ) -> list[Retrieved]:
     """Vector + full-text search fused with RRF, optionally reranked by a cross-encoder."""
     s = get_settings()
     mode = keyword_mode or s.keyword_mode
     use_rerank = s.rerank_enabled if rerank is None else rerank
 
-    fused = fuse(vector_search(db, query_vec, candidate_k), keyword_search(db, query, query_vec, candidate_k, mode))
+    fused = fuse(
+        vector_search(db, query_vec, candidate_k, viewer_id),
+        keyword_search(db, query, query_vec, candidate_k, mode, viewer_id),
+    )
     if use_rerank and fused:
         if reranker is None:
             from app.rag.rerank import get_reranker

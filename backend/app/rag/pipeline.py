@@ -45,6 +45,7 @@ class ChatResult:
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    question: str = ""  # as screened (PII redacted); this is what gets stored
 
 
 def _build_prompt(question: str, passages: list[Retrieved]) -> str:
@@ -60,7 +61,7 @@ def _outcome(flags: list[str]) -> str:
     return "answered"
 
 
-def answer_question(db: Session, raw_question: str) -> ChatResult:
+def answer_question(db: Session, raw_question: str, user_id: int | None = None) -> ChatResult:
     s = get_settings()
     start = time.perf_counter()
     flags: list[str] = []
@@ -82,7 +83,7 @@ def answer_question(db: Session, raw_question: str) -> ChatResult:
         answer = inp.reason
     else:
         qvec = get_embedder().embed([inp.text], is_query=True)[0]
-        hits = hybrid_search(db, inp.text, qvec, s.top_k, s.candidate_k)
+        hits = hybrid_search(db, inp.text, qvec, s.top_k, s.candidate_k, viewer_id=user_id)
         if s.guardrails_enabled:
             hits = [h for h in hits if h.similarity >= s.min_relevance]
         if not hits:
@@ -107,13 +108,13 @@ def answer_question(db: Session, raw_question: str) -> ChatResult:
     outcome = "blocked" if inp.blocked else _outcome(flags)  # a fail-closed guard outage blocks without a block flag
     result = ChatResult(
         answer, sources, flags, latency, outcome,
-        gen.model if gen else "", gen.prompt_tokens if gen else 0, gen.completion_tokens if gen else 0,
+        gen.model if gen else "", gen.prompt_tokens if gen else 0, gen.completion_tokens if gen else 0, inp.text,
     )
     db.add(
         AuditLog(
             question=inp.text, answer=answer, flags=flags, sources=[x.source for x in sources],
             latency_ms=latency, request_id=request_id_var.get(), outcome=outcome, model=result.model,
-            prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens,
+            prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens, user_id=user_id,
         )
     )
     db.commit()

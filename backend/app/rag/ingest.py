@@ -29,19 +29,20 @@ def extract_text(filename: str, data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def ingest_document(db: Session, source: str, title: str, text: str) -> Document:
-    """Idempotent: re-ingesting the same source replaces its chunks."""
+def ingest_document(db: Session, source: str, title: str, text: str, owner_id: int | None = None) -> Document:
+    """Idempotent: re-ingesting the same source (for the same owner) replaces its chunks."""
     s = get_settings()
     pieces = chunk_text(text, s.chunk_size, s.chunk_overlap)
     if not pieces:
         raise ValueError("Document contains no extractable text")
     vectors = get_embedder().embed(pieces)
 
-    existing = db.scalar(select(Document).where(Document.source == source))
+    owner_match = Document.owner_id.is_(None) if owner_id is None else Document.owner_id == owner_id
+    existing = db.scalar(select(Document).where(Document.source == source, owner_match))
     if existing:
         db.delete(existing)
         db.flush()
-    doc = Document(title=title, source=source)
+    doc = Document(title=title, source=source, owner_id=owner_id)
     scans = [scan_chunk(p) for p in pieces]
     doc.chunks = [
         Chunk(position=i, content=p, embedding=v, quarantined=bool(reasons))

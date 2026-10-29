@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, false, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,16 +15,30 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
-    source: Mapped[str] = mapped_column(String(512), unique=True)
+    source: Mapped[str] = mapped_column(String(512))
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+
+
+# A source name is unique per owner; owner NULL means a shared company document.
+Index("uq_documents_owner_source", func.coalesce(Document.owner_id, 0), Document.source, unique=True)
 
 
 class Chunk(Base):
@@ -57,3 +71,31 @@ class AuditLog(Base):
     model: Mapped[str] = mapped_column(String(64), default="")
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class ChatSession(Base):
+    """One conversation. user_id NULL is the single shared bucket used when auth is disabled."""
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)  # unguessable uuid hex
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
+    title: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.id"
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(10))  # user | assistant
+    content: Mapped[str] = mapped_column(Text)  # user text is stored after PII redaction
+    meta: Mapped[dict] = mapped_column(JSONB, default=dict)  # assistant only: sources, flags, outcome, latency, tokens
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    session: Mapped[ChatSession] = relationship(back_populates="messages")

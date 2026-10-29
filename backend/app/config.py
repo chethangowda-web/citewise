@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     max_question_chars: int = 1000
     api_key: str = ""  # if set, clients must send X-API-Key
     cors_origins: str = "http://localhost:5173"
+    # Accounts. When enabled every API call except /health and /auth/* needs a Bearer token, uploads are
+    # private to their owner, and chat history is per user. When disabled the app is single-user as before.
+    auth_enabled: bool = False
+    allow_signup: bool = True
+    jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
+    jwt_ttl_minutes: int = 60 * 24 * 7
+    auth_rate_limit_per_minute: int = 10  # login/register attempts per client address; 0 disables
     admin_api_key: str = ""  # admin endpoints are disabled unless this is set
     rate_limit_per_minute: int = 20  # per client, /api/chat and uploads; 0 disables
     # Evaluation only: turns off screening, relevance floor and citation enforcement so the

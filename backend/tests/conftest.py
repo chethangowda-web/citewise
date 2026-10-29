@@ -98,7 +98,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _clean_state(client):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE chunks, documents, audit_logs RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE chunks, documents, audit_logs, chat_messages, chat_sessions, users RESTART IDENTITY CASCADE"))
     limiter.reset()
     yield
 
@@ -120,3 +120,14 @@ def refund_doc(client):
     r = client.post("/api/documents", files={"file": ("refund_policy.md", body, "text/markdown")})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+@pytest.fixture
+def refund_doc_for(client):
+    def _upload(headers):
+        body = b"# Refund Policy\n\nCustomers may request a full refund within 30 days of purchase.\n"
+        r = client.post("/api/documents", headers=headers, files={"file": ("refund_policy.md", body, "text/markdown")})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    return _upload

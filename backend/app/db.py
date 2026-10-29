@@ -28,6 +28,12 @@ def init_db() -> None:
             "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS completion_tokens INTEGER NOT NULL DEFAULT 0",
             "CREATE INDEX IF NOT EXISTS ix_audit_logs_outcome ON audit_logs (outcome)",
             "ALTER TABLE chunks ADD COLUMN IF NOT EXISTS quarantined BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE",
+            "CREATE INDEX IF NOT EXISTS ix_documents_owner_id ON documents (owner_id)",
+            # source used to be globally unique; it is now unique per owner (see models.py)
+            "ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_source_key",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_owner_source ON documents ((coalesce(owner_id, 0)), source)",
         ):
             conn.execute(text(ddl))
 
