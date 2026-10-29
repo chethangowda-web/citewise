@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -8,6 +9,8 @@ from groq import Groq
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
+
+log = logging.getLogger("rag.llm")
 
 _retry = retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=4), reraise=True)
 
@@ -119,5 +122,29 @@ def get_embedder() -> GeminiClient:
     return GeminiClient()
 
 
+class FallbackGenerator:
+    """Tries each generator in order; moves on when one is out of quota or down."""
+
+    def __init__(self, generators: list[Generator]) -> None:
+        self._generators = generators
+
+    def generate(self, system: str, prompt: str) -> Generation:
+        last: LLMUnavailable | None = None
+        for i, gen in enumerate(self._generators):
+            try:
+                return gen.generate(system, prompt)
+            except LLMUnavailable as e:
+                last = e
+                if i + 1 < len(self._generators):
+                    log.warning("llm_fallback", extra={"failed": type(gen).__name__, "error": str(e)[:300]})
+        raise LLMUnavailable(str(last)) from last
+
+
 def get_generator() -> Generator:
-    return GroqClient() if get_settings().llm_provider == "groq" else GeminiClient()
+    s = get_settings()
+    groq_first = s.llm_provider == "groq"
+    chain: list[Generator] = [GroqClient() if groq_first else GeminiClient()]
+    other_key = s.gemini_api_key if groq_first else s.groq_api_key
+    if s.llm_fallback and other_key:
+        chain.append(GeminiClient() if groq_first else GroqClient())
+    return chain[0] if len(chain) == 1 else FallbackGenerator(chain)

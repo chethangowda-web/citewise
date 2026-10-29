@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     # Generation provider: "gemini" or "groq". Embeddings always use Gemini.
     llm_provider: str = "gemini"
+    llm_fallback: bool = True  # if the primary provider is out of quota or down, try the other (when its key is set)
     gemini_api_key: str = ""
     groq_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
