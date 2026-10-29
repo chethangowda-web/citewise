@@ -1,0 +1,63 @@
+# Production-like stack: only nginx (the `frontend` service) is published.
+# `docker-compose.override.yml` is picked up automatically for local development and adds the
+# db/backend ports. For a production-style run use:  docker compose -f docker-compose.yml up -d
+
+x-backend: &backend
+  build:
+    context: ./backend
+    args:
+      PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.11-slim}
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://rag:${POSTGRES_PASSWORD:-rag}@db:5432/rag
+    TRUSTED_PROXY: "true" # nginx overwrites X-Forwarded-For, so the real client IP can be trusted
+  volumes:
+    - ./data:/data:ro
+
+services:
+  db:
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag} # change this outside local development
+      POSTGRES_DB: rag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # One-off job:  docker compose run --rm ingest
+  ingest:
+    <<: *backend
+    profiles: ["tools"]
+    command: ["python", "-m", "app.rag.ingest", "/data/policies"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,9 @@
+# Local development extras (auto-applied by `docker compose up`). Not for production:
+# publishing the backend directly means X-Forwarded-For could be spoofed around nginx.
+services:
+  db:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+  backend:
+    ports:
+      - "8000:8000"

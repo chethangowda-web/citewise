@@ -1,0 +1,83 @@
+name: Evaluation gate
+
+# Runs the 44-question golden set against the real stack and the real LLM, then the browser tests
+# against the nginx build. It spends API quota, so it runs nightly and on demand rather than per push.
+#
+# Required repository secrets: GEMINI_API_KEY (embeddings), and GROQ_API_KEY if LLM_PROVIDER is groq.
+on:
+  workflow_dispatch:
+    inputs:
+      llm_provider:
+        description: "Generation provider"
+        type: choice
+        options: [groq, gemini]
+        default: groq
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: Golden-set gate + browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      LLM_PROVIDER: ${{ inputs.llm_provider || 'groq' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail fast if secrets are missing
+        run: |
+          test -n "$GEMINI_API_KEY" || { echo "::error::GEMINI_API_KEY secret is not set"; exit 1; }
+          if [ "$LLM_PROVIDER" = "groq" ]; then test -n "$GROQ_API_KEY" || { echo "::error::GROQ_API_KEY secret is not set"; exit 1; }; fi
+
+      - name: Write .env (secrets are masked in logs)
+        run: |
+          printf 'LLM_PROVIDER=%s\nGEMINI_API_KEY=%s\nGROQ_API_KEY=%s\nRATE_LIMIT_PER_MINUTE=0\nADMIN_API_KEY=ci-admin-key\n' \
+            "$LLM_PROVIDER" "$GEMINI_API_KEY" "$GROQ_API_KEY" > .env
+
+      - name: Start the stack and ingest the sample policies
+        run: |
+          docker compose -f docker-compose.yml up -d --build
+          for i in $(seq 1 40); do curl -fs http://localhost:8080/api/health && break; sleep 3; done
+          docker compose -f docker-compose.yml run --rm ingest
+
+      - name: Evaluation gate (fails the job on a quality regression)
+        run: |
+          docker compose -f docker-compose.yml exec -T backend \
+            python eval/run.py --base-url http://localhost:8000 --delay 1 --out /tmp/report.json
+          docker compose -f docker-compose.yml cp backend:/tmp/report.json ./eval-report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Browser tests against the production build
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:8080
+          E2E_ADMIN_KEY: ci-admin-key
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright test
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml logs --tail 150
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
