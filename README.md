@@ -1,4 +1,4 @@
-# Policy Desk: a secure RAG chatbot with guardrails
+# Citewise: a secure RAG chatbot with guardrails
 
 Ask questions about company policy documents and get answers that are **screened, grounded, cited and audited**.
 If a claim can't be backed by a document, the system refuses instead of guessing.

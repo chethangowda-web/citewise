@@ -1,4 +1,4 @@
-# Deploying Policy Desk
+# Deploying Citewise
 
 > **Status:** these steps use only what is verified locally (the production Compose file, the nginx build, health checks). The app has **not** been deployed to a cloud host yet, so treat the host-specific parts as a starting point and expect to adjust.
 

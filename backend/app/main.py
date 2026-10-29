@@ -19,7 +19,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Policy RAG Assistant", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Citewise", version="0.2.0", lifespan=lifespan)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(  # added last so it is outermost and also answers preflights
     CORSMiddleware,

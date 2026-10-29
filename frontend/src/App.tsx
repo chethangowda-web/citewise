@@ -259,7 +259,7 @@ export default function App() {
             <path d="M9 17l5 5 9-12" stroke="#f4d35e" strokeWidth="3.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
-            <h1>Policy Desk</h1>
+            <h1>Citewise</h1>
             <p>Every answer inspected. Every claim cited.</p>
           </div>
         </div>

@@ -33,7 +33,7 @@ export function Login({ allowSignup, onSignedIn, notice }: Props) {
   return (
     <div className="login-wrap">
       <form className="login" onSubmit={submit} aria-label={mode === 'login' ? 'Sign in' : 'Create account'}>
-        <h1>Policy Desk</h1>
+        <h1>Citewise</h1>
         <p>{mode === 'login' ? 'Sign in to open the archive.' : 'Create an account. Your uploads stay private to you.'}</p>
         {notice && (
           <p className="notice" role="status">
