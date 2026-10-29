@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 
 REFUSAL_FLAGS = {"no_relevant_context", "ungrounded_answer"}
-BLOCK_FLAGS = {"prompt_injection", "toxicity"}
+BLOCK_FLAGS = {"prompt_injection", "prompt_injection_ml", "toxicity"}
 # With guardrails off there are no flags, so a model's own "I don't know" must count as a refusal.
 REFUSAL_TEXT = re.compile(
     r"(don'?t|do not) know|couldn'?t find|can'?t answer|cannot answer|can only answer|no information|not (covered|mentioned|specified|provided)",
@@ -106,22 +106,67 @@ def summarize(results: list[dict]) -> dict:
     return metrics
 
 
+def collect(cases, ask_fn, checkpoint: Path | None, delay: float = 0.0, max_unavailable: int = 3):
+    """Ask every case once, saving raw responses so an interrupted run can resume.
+
+    A response flagged `eval_api_unavailable` (provider quota/outage) is never stored or graded:
+    counting it as a wrong answer would silently corrupt the metrics. After `max_unavailable`
+    consecutive failures the run pauses. Returns (raw responses by case id, paused).
+    """
+    raw: dict[str, dict] = {}
+    if checkpoint and checkpoint.exists():
+        raw = json.loads(checkpoint.read_text(encoding="utf-8"))
+        print(f"resuming: {len(raw)}/{len(cases)} answers already collected")
+    failures = 0
+    for c in cases:
+        if c["id"] in raw:
+            continue
+        res = ask_fn(c["question"])
+        if "eval_api_unavailable" in res["flags"]:
+            failures += 1
+            if failures >= max_unavailable:
+                return raw, True
+            continue
+        failures = 0
+        raw[c["id"]] = res
+        if checkpoint:
+            checkpoint.write_text(json.dumps(raw), encoding="utf-8")
+        time.sleep(delay)
+    return raw, any(c["id"] not in raw for c in cases)
+
+
+def utf8_output() -> None:
+    """Answers contain characters (non-breaking hyphens, 【】) that Windows consoles cannot encode."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> int:
+    utf8_output()
     p = argparse.ArgumentParser()
     p.add_argument("--base-url", default=os.getenv("EVAL_BASE_URL", "http://localhost:8000"))
     p.add_argument("--out", default=str(Path(__file__).parent / "report.json"))
     p.add_argument("--label", default="guardrails-on", help="name stored in the report")
     p.add_argument("--no-gate", action="store_true", help="report only; always exit 0 (used for the baseline run)")
     p.add_argument("--delay", type=float, default=0.3, help="seconds between requests (rate limits)")
+    p.add_argument("--checkpoint", default=None, help="file that stores answers so a paused run can resume (default: <out>.partial)")
+    p.add_argument("--fresh", action="store_true", help="ignore any existing checkpoint and start over")
     args = p.parse_args()
 
     cases = json.loads((Path(__file__).parent / "golden.json").read_text(encoding="utf-8"))
     headers = {"X-API-Key": os.environ["API_KEY"]} if os.getenv("API_KEY") else {}
-    results = []
+    checkpoint = Path(args.checkpoint or args.out + ".partial")
+    if args.fresh:
+        checkpoint.unlink(missing_ok=True)
     with httpx.Client(base_url=args.base_url) as client:
-        for c in cases:
-            results.append(grade(c, ask(client, c["question"], headers)))
-            time.sleep(args.delay)
+        raw, paused = collect(cases, lambda q: ask(client, q, headers), checkpoint, args.delay)
+    if paused:
+        print(f"\nPAUSED: the provider is unavailable (quota or outage). {len(raw)}/{len(cases)} answers saved in {checkpoint}.")
+        print("Re-run the same command later to continue; nothing was graded or reported from a partial run.")
+        return 3
+    checkpoint.unlink(missing_ok=True)
+    results = [grade(c, raw[c["id"]]) for c in cases]
 
     metrics = summarize(results)
     Path(args.out).write_text(json.dumps({"label": args.label, "metrics": metrics, "results": results}, indent=1), encoding="utf-8")

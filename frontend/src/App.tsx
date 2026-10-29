@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { chat, listDocuments, uploadDocument } from './api'
+import { chat, deleteDocument, listDocuments, uploadDocument } from './api'
 import { AuditView } from './components/AuditView'
 import { Cabinet } from './components/Cabinet'
 import { Trace } from './components/Trace'
@@ -27,6 +27,7 @@ export default function App() {
   const [docsLoading, setDocsLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [docError, setDocError] = useState('')
+  const [docNotice, setDocNotice] = useState('')
   const [online, setOnline] = useState<boolean | null>(null)
   const [railOpen, setRailOpen] = useState(false)
   const [view, setView] = useState<'desk' | 'audit'>('desk')
@@ -78,15 +79,33 @@ export default function App() {
     if (!files.length) return
     setUploading(true)
     setDocError('')
+    setDocNotice('')
     for (const f of files) {
       try {
-        await uploadDocument(f)
+        const r = await uploadDocument(f)
+        if (r.quarantined) {
+          setDocNotice(
+            `${f.name}: ${r.quarantined} of ${r.chunks} passages look like prompt injection and were quarantined. They will not be used for answers.`,
+          )
+        }
       } catch (e) {
         setDocError(`${f.name}: ${e instanceof Error ? e.message : 'upload failed'}`)
       }
     }
     await refreshDocs()
     setUploading(false)
+  }
+
+  const remove = async (doc: DocInfo) => {
+    if (!window.confirm(`Delete "${doc.title}" and all of its passages?`)) return
+    setDocError('')
+    try {
+      await deleteDocument(doc.id)
+      setDocNotice('')
+      await refreshDocs()
+    } catch (e) {
+      setDocError(e instanceof Error ? e.message : 'Could not delete the document')
+    }
   }
 
   const active = turns.find((t) => t.id === selected) ?? turns[turns.length - 1]
@@ -120,7 +139,7 @@ export default function App() {
         </span>
       </header>
 
-      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} onUpload={upload} />
+      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} />
 
       <main className="dossier">
         <div className="turns">

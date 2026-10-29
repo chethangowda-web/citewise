@@ -1,4 +1,4 @@
-import type { AdminStats, AuditRow, ChatResponse, DocInfo } from './types'
+import type { AdminStats, AuditRow, ChatResponse, DocInfo, UploadResult } from './types'
 
 function headers(extra: Record<string, string> = {}) {
   const key = localStorage.getItem('policyDeskApiKey')
@@ -32,9 +32,14 @@ export const uploadDocument = (file: File) => {
   const form = new FormData()
   form.append('file', file)
   return fetch('/api/documents', { method: 'POST', headers: headers(), body: form }).then((r) =>
-    parse<{ id: number; title: string; chunks: number }>(r),
+    parse<UploadResult>(r),
   )
 }
+
+export const deleteDocument = (id: number) =>
+  fetch(`/api/documents/${id}`, { method: 'DELETE', headers: headers() }).then(async (r) => {
+    if (!r.ok) await parse<never>(r)
+  })
 
 const adminHeaders = (key: string) => ({ 'X-Admin-Key': key })
 

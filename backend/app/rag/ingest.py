@@ -7,7 +7,10 @@ from pypdf import PdfReader
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.config import get_settings
+from app.guardrails.document_scan import scan_chunk
 from app.db import SessionLocal, init_db
 from app.llm.providers import get_embedder
 from app.models import Chunk, Document
@@ -39,7 +42,16 @@ def ingest_document(db: Session, source: str, title: str, text: str) -> Document
         db.delete(existing)
         db.flush()
     doc = Document(title=title, source=source)
-    doc.chunks = [Chunk(position=i, content=p, embedding=v) for i, (p, v) in enumerate(zip(pieces, vectors))]
+    scans = [scan_chunk(p) for p in pieces]
+    doc.chunks = [
+        Chunk(position=i, content=p, embedding=v, quarantined=bool(reasons))
+        for i, (p, v, reasons) in enumerate(zip(pieces, vectors, scans))
+    ]
+    flagged = [r for r in scans if r]
+    if flagged:
+        logging.getLogger("rag.ingest").warning(
+            "chunks_quarantined", extra={"source": source, "quarantined": len(flagged), "reasons": sorted({x for r in flagged for x in r})}
+        )
     db.add(doc)
     db.commit()
     return doc
@@ -52,7 +64,8 @@ def main(folder: str) -> None:
             if path.suffix.lower() not in {".md", ".txt", ".pdf"}:
                 continue
             doc = ingest_document(db, path.name, title_from_filename(path.name), extract_text(path.name, path.read_bytes()))
-            print(f"ingested {path.name}: {len(doc.chunks)} chunks")
+            held = sum(c.quarantined for c in doc.chunks)
+            print(f"ingested {path.name}: {len(doc.chunks)} chunks" + (f"  ({held} QUARANTINED: possible prompt injection)" if held else ""))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,39 @@
+{
+ "threshold": 0.05,
+ "test": {
+  "Regex filter only": {
+   "tp": 2,
+   "attacks": 20,
+   "fp": 0,
+   "benign": 20
+  },
+  "ML classifier only (t=0.05)": {
+   "tp": 16,
+   "attacks": 20,
+   "fp": 0,
+   "benign": 20
+  },
+  "Regex + ML (t=0.05, tuned on dev)": {
+   "tp": 16,
+   "attacks": 20,
+   "fp": 0,
+   "benign": 20
+  },
+  "Regex + ML (t=0.5, library default)": {
+   "tp": 15,
+   "attacks": 20,
+   "fp": 0,
+   "benign": 20
+  }
+ },
+ "all": {},
+ "chunk_false_quarantine": {
+  "ml": 0,
+  "regex": 0,
+  "chunks": 31
+ },
+ "latency_ms": {
+  "mean": 162.2989372743668,
+  "p95": 255.32684300014807
+ }
+}

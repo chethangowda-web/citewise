@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,8 @@ class Chunk(Base):
     position: Mapped[int] = mapped_column(Integer)
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float]] = mapped_column(Vector(DIM))
+    # Chunks that look like prompt injection are kept for review but never retrieved.
+    quarantined: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     document: Mapped[Document] = relationship(back_populates="chunks")
 
 

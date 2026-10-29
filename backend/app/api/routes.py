@@ -71,7 +71,10 @@ def chat(req: ChatRequest, db: Session = Depends(get_db)):
 @router.get("/documents", dependencies=[Depends(require_api_key)])
 def list_documents(db: Session = Depends(get_db)):
     docs = db.scalars(select(Document).order_by(Document.created_at.desc())).all()
-    return [{"id": d.id, "title": d.title, "source": d.source, "chunks": len(d.chunks)} for d in docs]
+    return [
+        {"id": d.id, "title": d.title, "source": d.source, "chunks": len(d.chunks), "quarantined": sum(c.quarantined for c in d.chunks)}
+        for d in docs
+    ]
 
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -89,4 +92,14 @@ def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db))
         doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data))
     except ValueError as e:
         raise HTTPException(422, str(e))
-    return {"id": doc.id, "title": doc.title, "chunks": len(doc.chunks)}
+    held = sum(c.quarantined for c in doc.chunks)
+    return {"id": doc.id, "title": doc.title, "chunks": len(doc.chunks), "quarantined": held}
+
+
+@router.delete("/documents/{doc_id}", status_code=204, dependencies=[Depends(require_api_key), Depends(rate_limit)])
+def delete_document(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.get(Document, doc_id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    db.delete(doc)
+    db.commit()

@@ -1,0 +1,520 @@
+[
+ {
+  "id": "r01",
+  "question": "How many days ahead do I need to book a domestic flight?",
+  "source": "travel_policy.md",
+  "snippet": "at least 14 days ahead in economy class",
+  "type": "keyword"
+ },
+ {
+  "id": "r02",
+  "question": "What is the daily meal allowance for international trips?",
+  "source": "travel_policy.md",
+  "snippet": "75 USD per day internationally",
+  "type": "keyword"
+ },
+ {
+  "id": "r03",
+  "question": "Am I allowed to buy the rental car company's insurance?",
+  "source": "travel_policy.md",
+  "snippet": "must decline the rental company's insurance",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r04",
+  "question": "How soon after I get back from a trip must I file my travel costs?",
+  "source": "travel_policy.md",
+  "snippet": "within 21 days of returning from the trip",
+  "type": "confusable"
+ },
+ {
+  "id": "r05",
+  "question": "Can I fly business class?",
+  "source": "travel_policy.md",
+  "snippet": "Business class is never reimbursed unless the CEO approves it in writing",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r06",
+  "question": "What approvals do I need to buy something that costs 5,000 dollars?",
+  "source": "procurement_policy.md",
+  "snippet": "require two written quotes and approval from a department head",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r07",
+  "question": "Who must sign off on a purchase above 10,000 USD?",
+  "source": "procurement_policy.md",
+  "snippet": "approval from the CFO",
+  "type": "keyword"
+ },
+ {
+  "id": "r08",
+  "question": "Is it okay to break one big order into several small ones?",
+  "source": "procurement_policy.md",
+  "snippet": "split a purchase into several smaller orders",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r09",
+  "question": "Where do I buy software subscriptions?",
+  "source": "procurement_policy.md",
+  "snippet": "purchased only through IT",
+  "type": "keyword"
+ },
+ {
+  "id": "r10",
+  "question": "How long is the probation period for new hires?",
+  "source": "onboarding_policy.md",
+  "snippet": "The probation period is 90 days",
+  "type": "keyword"
+ },
+ {
+  "id": "r11",
+  "question": "When do new employees get their laptop?",
+  "source": "onboarding_policy.md",
+  "snippet": "laptop and accounts on the Friday before their start date",
+  "type": "keyword"
+ },
+ {
+  "id": "r12",
+  "question": "Who helps a new person during their first three months?",
+  "source": "onboarding_policy.md",
+  "snippet": "onboarding buddy for the first 90 days",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r13",
+  "question": "By when must I enroll in benefits after joining the company?",
+  "source": "onboarding_policy.md",
+  "snippet": "within 30 days of the start date",
+  "type": "confusable"
+ },
+ {
+  "id": "r14",
+  "question": "How often are performance reviews held?",
+  "source": "performance_review_policy.md",
+  "snippet": "twice a year, in June and December",
+  "type": "keyword"
+ },
+ {
+  "id": "r15",
+  "question": "What happens if I get a rating of 2?",
+  "source": "performance_review_policy.md",
+  "snippet": "written performance improvement plan lasting 60 days",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r16",
+  "question": "What is the maximum merit raise?",
+  "source": "performance_review_policy.md",
+  "snippet": "capped at 8 percent",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r17",
+  "question": "How long do I have to dispute my rating?",
+  "source": "performance_review_policy.md",
+  "snippet": "within 10 business days by writing to HR",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r18",
+  "question": "How long do we keep customer records after a contract ends?",
+  "source": "data_retention_policy.md",
+  "snippet": "7 years after the end of the contract",
+  "type": "keyword"
+ },
+ {
+  "id": "r19",
+  "question": "How long are chat messages kept?",
+  "source": "data_retention_policy.md",
+  "snippet": "Chat messages are retained for 1 year",
+  "type": "keyword"
+ },
+ {
+  "id": "r20",
+  "question": "How quickly must we honour a customer's request to erase their information?",
+  "source": "data_retention_policy.md",
+  "snippet": "within 30 days and confirmed in writing",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r21",
+  "question": "How often are backup restores tested?",
+  "source": "data_retention_policy.md",
+  "snippet": "every quarter by the infrastructure team",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r22",
+  "question": "How fast must we respond to a severity 1 incident?",
+  "source": "incident_response_policy.md",
+  "snippet": "within 15 minutes, 24 hours a day",
+  "type": "keyword"
+ },
+ {
+  "id": "r23",
+  "question": "How long do we have to tell regulators about a personal data breach?",
+  "source": "incident_response_policy.md",
+  "snippet": "within 72 hours of confirming a breach",
+  "type": "keyword"
+ },
+ {
+  "id": "r24",
+  "question": "When is the review meeting held after a major incident?",
+  "source": "incident_response_policy.md",
+  "snippet": "blameless post-incident review is held within 5 business days",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r25",
+  "question": "Who decides if customers need to be told about an incident?",
+  "source": "incident_response_policy.md",
+  "snippet": "decides whether customers and regulators must be notified",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r26",
+  "question": "Can I install a torrent client on my work laptop?",
+  "source": "acceptable_use_policy.md",
+  "snippet": "torrent clients and cryptocurrency miners are strictly prohibited",
+  "type": "keyword"
+ },
+ {
+  "id": "r27",
+  "question": "Can I check personal things on company equipment?",
+  "source": "acceptable_use_policy.md",
+  "snippet": "Limited personal use is allowed",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r28",
+  "question": "Does the company watch what I do on its network?",
+  "source": "acceptable_use_policy.md",
+  "snippet": "may monitor network traffic",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r29",
+  "question": "What passcode length is required on a personal phone used for work?",
+  "source": "byod_policy.md",
+  "snippet": "passcode of at least 6 digits",
+  "type": "keyword"
+ },
+ {
+  "id": "r30",
+  "question": "How soon must I report a lost personal phone?",
+  "source": "byod_policy.md",
+  "snippet": "tell IT within 4 hours",
+  "type": "confusable"
+ },
+ {
+  "id": "r31",
+  "question": "Does the company pay for my phone plan if I use my own phone?",
+  "source": "byod_policy.md",
+  "snippet": "30 USD per month toward the mobile phone bill",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r32",
+  "question": "Can I use my own laptop to reach production?",
+  "source": "byod_policy.md",
+  "snippet": "Personal laptops may not be used to access production systems",
+  "type": "keyword"
+ },
+ {
+  "id": "r33",
+  "question": "How much more do I earn for working past 40 hours?",
+  "source": "overtime_policy.md",
+  "snippet": "1.5 times their hourly rate",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r34",
+  "question": "How much is the on-call allowance?",
+  "source": "overtime_policy.md",
+  "snippet": "stipend of 150 USD per week",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r35",
+  "question": "How much rest must I get between shifts?",
+  "source": "overtime_policy.md",
+  "snippet": "at least 11 hours of rest between shifts",
+  "type": "keyword"
+ },
+ {
+  "id": "r36",
+  "question": "How many public holidays do we get?",
+  "source": "public_holidays_policy.md",
+  "snippet": "observes 11 paid public holidays",
+  "type": "keyword"
+ },
+ {
+  "id": "r37",
+  "question": "What happens when a holiday lands on a weekend?",
+  "source": "public_holidays_policy.md",
+  "snippet": "observed on the preceding Friday",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r38",
+  "question": "Does the end-of-year office closure use up my vacation days?",
+  "source": "public_holidays_policy.md",
+  "snippet": "does not deduct from vacation balances",
+  "type": "confusable"
+ },
+ {
+  "id": "r39",
+  "question": "Can I ease back in after having a baby?",
+  "source": "return_to_work_policy.md",
+  "snippet": "phased schedule of 4 days per week for the first 4 weeks",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r40",
+  "question": "Is there a place to pump milk at work?",
+  "source": "return_to_work_policy.md",
+  "snippet": "private room and reasonable break time",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r41",
+  "question": "Do I keep my health coverage while I am on leave?",
+  "source": "return_to_work_policy.md",
+  "snippet": "continues to pay its share of the premium during approved leave",
+  "type": "confusable"
+ },
+ {
+  "id": "r42",
+  "question": "How long must I stay after the company moves me to another city?",
+  "source": "relocation_policy.md",
+  "snippet": "stay with the company for 12 months after the move",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r43",
+  "question": "How much temporary housing is covered when relocating?",
+  "source": "relocation_policy.md",
+  "snippet": "temporary housing for up to 60 days",
+  "type": "keyword"
+ },
+ {
+  "id": "r44",
+  "question": "Is the relocation lump sum taxed?",
+  "source": "relocation_policy.md",
+  "snippet": "taxable income",
+  "type": "keyword"
+ },
+ {
+  "id": "r45",
+  "question": "How much tuition can the company reimburse each year?",
+  "source": "tuition_reimbursement_policy.md",
+  "snippet": "up to 5,250 USD per calendar year",
+  "type": "keyword"
+ },
+ {
+  "id": "r46",
+  "question": "What grade do I need to get a full reimbursement for a course?",
+  "source": "tuition_reimbursement_policy.md",
+  "snippet": "100 percent for a grade of B or higher",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r47",
+  "question": "Is the tuition benefit the same thing as the learning budget?",
+  "source": "tuition_reimbursement_policy.md",
+  "snippet": "separate from the annual learning budget",
+  "type": "confusable"
+ },
+ {
+  "id": "r48",
+  "question": "How quickly must a workplace injury be reported?",
+  "source": "workplace_safety_policy.md",
+  "snippet": "injuries to their manager and to facilities within 24 hours",
+  "type": "keyword"
+ },
+ {
+  "id": "r49",
+  "question": "Where are the defibrillators?",
+  "source": "workplace_safety_policy.md",
+  "snippet": "Automated defibrillators are located in the lobby and on each floor",
+  "type": "keyword"
+ },
+ {
+  "id": "r50",
+  "question": "How often are fire drills?",
+  "source": "workplace_safety_policy.md",
+  "snippet": "Fire drills are held twice a year",
+  "type": "keyword"
+ },
+ {
+  "id": "r51",
+  "question": "How do I report suspected fraud without giving my name?",
+  "source": "whistleblower_policy.md",
+  "snippet": "Reports can be made anonymously",
+  "type": "confusable"
+ },
+ {
+  "id": "r52",
+  "question": "How fast does the ethics committee acknowledge a report?",
+  "source": "whistleblower_policy.md",
+  "snippet": "acknowledges a report within 3 business days",
+  "type": "keyword"
+ },
+ {
+  "id": "r53",
+  "question": "What happens to someone who retaliates against a person who raised a concern?",
+  "source": "whistleblower_policy.md",
+  "snippet": "is itself grounds for termination",
+  "type": "confusable"
+ },
+ {
+  "id": "r54",
+  "question": "Can I use the company logo as my profile photo?",
+  "source": "social_media_policy.md",
+  "snippet": "Do not use the company logo as a profile picture",
+  "type": "keyword"
+ },
+ {
+  "id": "r55",
+  "question": "A journalist emailed me asking about the company. What should I do?",
+  "source": "social_media_policy.md",
+  "snippet": "Forward any media request to press@company.example within 1 business day",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r56",
+  "question": "How often is access to customer data reviewed?",
+  "source": "customer_data_handling_policy.md",
+  "snippet": "access is reviewed every quarter",
+  "type": "keyword"
+ },
+ {
+  "id": "r57",
+  "question": "Can I use real customer data to test my code?",
+  "source": "customer_data_handling_policy.md",
+  "snippet": "unless it has been anonymized",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r58",
+  "question": "How big an export of customer data needs approval?",
+  "source": "customer_data_handling_policy.md",
+  "snippet": "larger than 1,000 records require written approval from the data protection officer",
+  "type": "keyword"
+ },
+ {
+  "id": "r59",
+  "question": "What do support agents need to confirm before talking about an account?",
+  "source": "customer_data_handling_policy.md",
+  "snippet": "two identifying details",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r60",
+  "question": "How fast must a suspected customer data leak be reported?",
+  "source": "customer_data_handling_policy.md",
+  "snippet": "security team and the data protection officer within 1 hour",
+  "type": "confusable"
+ },
+ {
+  "id": "r61",
+  "question": "What's the timeframe for returning a purchase to get my money back?",
+  "source": "refund_policy.md",
+  "snippet": "full refund within 30 days",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r62",
+  "question": "Are digital downloads and gift cards returnable?",
+  "source": "refund_policy.md",
+  "snippet": "Digital products and gift cards are non-refundable",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r63",
+  "question": "How many days off per year do full-time staff accrue?",
+  "source": "leave_policy.md",
+  "snippet": "20 days of paid vacation per year",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r64",
+  "question": "How long can a new father stay home after a birth?",
+  "source": "leave_policy.md",
+  "snippet": "secondary caregivers receive 6 weeks",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r65",
+  "question": "How many days can I work from home?",
+  "source": "remote_work_policy.md",
+  "snippet": "up to 3 days per week",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r66",
+  "question": "What equipment money do remote workers get?",
+  "source": "remote_work_policy.md",
+  "snippet": "home office stipend of 500 USD for fully remote",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r67",
+  "question": "Is alcohol on a client dinner reimbursable?",
+  "source": "expense_policy.md",
+  "snippet": "Alcohol is not reimbursable under any circumstances",
+  "type": "keyword"
+ },
+ {
+  "id": "r68",
+  "question": "How long after buying something do I have to submit my expense report with receipts?",
+  "source": "expense_policy.md",
+  "snippet": "within 30 days of the expense date",
+  "type": "confusable"
+ },
+ {
+  "id": "r69",
+  "question": "How long must my password be and how often does it change?",
+  "source": "security_policy.md",
+  "snippet": "at least 14 characters long and changed every 180 days",
+  "type": "keyword"
+ },
+ {
+  "id": "r70",
+  "question": "How quickly must I tell IT that my company laptop was stolen?",
+  "source": "security_policy.md",
+  "snippet": "within 2 hours of discovery",
+  "type": "confusable"
+ },
+ {
+  "id": "r71",
+  "question": "What does the company contribute to my retirement savings?",
+  "source": "benefits_policy.md",
+  "snippet": "401(k) retirement plan with a 4 percent employer match",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r72",
+  "question": "Is there a discount on buying company shares?",
+  "source": "benefits_policy.md",
+  "snippet": "10 percent discount on the share price",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r73",
+  "question": "What is the maximum value of a gift I can accept from a supplier?",
+  "source": "code_of_conduct.md",
+  "snippet": "gifts worth more than 75 USD",
+  "type": "paraphrase"
+ },
+ {
+  "id": "r74",
+  "question": "Can I trade stock if I know unannounced news?",
+  "source": "code_of_conduct.md",
+  "snippet": "Insider trading is prohibited",
+  "type": "paraphrase"
+ }
+]

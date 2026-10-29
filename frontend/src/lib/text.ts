@@ -55,21 +55,23 @@ export interface Station {
 }
 export type Verdict = 'answered' | 'refused' | 'blocked'
 
-const BLOCKED = ['prompt_injection', 'toxicity', 'empty', 'too_long']
+const BLOCKED = ['prompt_injection', 'prompt_injection_ml', 'toxicity', 'empty', 'too_long']
 
 /** Derive what each guardrail stage did from the flags the API returned. */
 export function buildTrace(res: ChatResponse): { stations: Station[]; verdict: Verdict } {
   const f = new Set(res.flags)
-  const blockedBy = BLOCKED.find((b) => f.has(b))
+  const blockedBy = BLOCKED.find((b) => f.has(b)) ?? (res.outcome === 'blocked' ? 'blocked' : undefined)
   const pii = res.flags.some((x) => x.startsWith('pii_'))
   const noContext = f.has('no_relevant_context')
   const ungrounded = f.has('ungrounded_answer')
 
   const screen: Station = blockedBy
-    ? { id: 'screen', label: 'Screen', note: blockedBy.replace('_', ' ') + ' stopped here', state: 'fail' }
+    ? { id: 'screen', label: 'Screen', note: blockedBy.replaceAll('_', ' ') + ' stopped here', state: 'fail' }
     : pii
       ? { id: 'screen', label: 'Screen', note: 'personal data redacted', state: 'warn' }
-      : { id: 'screen', label: 'Screen', note: 'question looks clean', state: 'pass' }
+      : f.has('ml_guard_unavailable')
+        ? { id: 'screen', label: 'Screen', note: 'AI detector offline, pattern check only', state: 'warn' }
+        : { id: 'screen', label: 'Screen', note: 'question looks clean', state: 'pass' }
 
   const search: Station = blockedBy
     ? { id: 'search', label: 'Search', note: 'not reached', state: 'skipped' }

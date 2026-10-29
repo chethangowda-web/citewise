@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     top_k: int = 5
     candidate_k: int = 20
     min_relevance: float = 0.55  # cosine floor; retrieval alone cannot reject in-domain-but-uncovered questions (see eval/tune_threshold.py)
+    keyword_mode: str = "or"  # full-text matching: "or" (any word) or "and" (all words); see eval/retrieval_lab.py
+    rerank_enabled: bool = False  # cross-encoder reranking of the fused candidates
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    rerank_candidates: int = 20
     chunk_size: int = 800
     chunk_overlap: int = 120
 
@@ -35,6 +39,12 @@ class Settings(BaseSettings):
     # same golden set can measure what the guardrails actually prevent.
     guardrails_enabled: bool = True
     log_level: str = "INFO"
+    # Second-layer ML injection detector (see eval/injection_eval.py for the measurements behind these defaults).
+    ml_guard: str = "off"  # "off" or "groq" (needs GROQ_API_KEY, independent of LLM_PROVIDER)
+    ml_guard_model: str = "meta-llama/llama-prompt-guard-2-86m"
+    ml_guard_threshold: float = 0.5
+    ml_guard_fail_open: bool = True  # if the classifier is unreachable: allow (True) or block (False)
+    ml_guard_timeout: float = 5.0
     # Only enable behind a reverse proxy that overwrites X-Forwarded-For (the bundled nginx does).
     # Otherwise any client could spoof its address and dodge the rate limit.
     trusted_proxy: bool = False

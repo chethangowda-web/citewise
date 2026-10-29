@@ -11,6 +11,8 @@ export interface ChatResponse {
   sources: Source[]
   flags: string[]
   latency_ms: number
+  outcome?: 'answered' | 'refused' | 'blocked'
+  tokens?: number
 }
 
 export interface DocInfo {
@@ -18,6 +20,14 @@ export interface DocInfo {
   title: string
   source: string
   chunks: number
+  quarantined?: number
+}
+
+export interface UploadResult {
+  id: number
+  title: string
+  chunks: number
+  quarantined?: number
 }
 
 export type Turn = {

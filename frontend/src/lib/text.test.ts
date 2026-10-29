@@ -50,4 +50,22 @@ describe('buildTrace', () => {
     expect(buildTrace(res(['ungrounded_answer'])).stations[3].state).toBe('fail')
     expect(buildTrace(res(['pii_email'])).stations[0].state).toBe('warn')
   })
+  it('ML-detected injection blocks at screen with a readable note', () => {
+    const t = buildTrace(res(['prompt_injection_ml']))
+    expect(t.verdict).toBe('blocked')
+    expect(t.stations[0].state).toBe('fail')
+    expect(t.stations[0].note).toContain('prompt injection ml')
+  })
+  it('a fail-closed guard outage is still shown as blocked (outcome wins over missing flags)', () => {
+    const r: ChatResponse = { ...res(['ml_guard_unavailable']), outcome: 'blocked' }
+    const t = buildTrace(r)
+    expect(t.verdict).toBe('blocked')
+    expect(t.stations.map((x) => x.state)).toEqual(['fail', 'skipped', 'skipped', 'skipped'])
+  })
+  it('a fail-open guard outage still answers but warns at screen', () => {
+    const t = buildTrace(res(['ml_guard_unavailable']))
+    expect(t.verdict).toBe('answered')
+    expect(t.stations[0].state).toBe('warn')
+    expect(t.stations[0].note).toContain('offline')
+  })
 })

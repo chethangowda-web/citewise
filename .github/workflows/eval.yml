@@ -37,8 +37,10 @@ jobs:
 
       - name: Write .env (secrets are masked in logs)
         run: |
-          printf 'LLM_PROVIDER=%s\nGEMINI_API_KEY=%s\nGROQ_API_KEY=%s\nRATE_LIMIT_PER_MINUTE=0\nADMIN_API_KEY=ci-admin-key\n' \
-            "$LLM_PROVIDER" "$GEMINI_API_KEY" "$GROQ_API_KEY" > .env
+          # Test the production configuration: the ML injection guard is on whenever a Groq key exists.
+          ML=off; [ -n "$GROQ_API_KEY" ] && ML=groq
+          printf 'LLM_PROVIDER=%s\nGEMINI_API_KEY=%s\nGROQ_API_KEY=%s\nML_GUARD=%s\nRATE_LIMIT_PER_MINUTE=0\nADMIN_API_KEY=ci-admin-key\n' \
+            "$LLM_PROVIDER" "$GEMINI_API_KEY" "$GROQ_API_KEY" "$ML" > .env
 
       - name: Start the stack and ingest the sample policies
         run: |

@@ -370,3 +370,51 @@
     font-size: 0.64rem;
   }
 }
+
+/* ---------- document quarantine + delete ---------- */
+.folder {
+  grid-template-columns: 1fr auto auto;
+}
+.folder-flag {
+  grid-column: 1 / -1;
+  margin-top: 0.3rem;
+  font: 500 0.64rem var(--mono);
+  color: #f0a58f;
+}
+.folder-del {
+  grid-row: 1;
+  grid-column: 3;
+  align-self: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #8c8372;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0;
+  transition: 0.15s;
+}
+.folder:hover .folder-del,
+.folder-del:focus-visible {
+  opacity: 1;
+}
+.folder-del:hover {
+  color: #f0a58f;
+  border-color: #f0a58f;
+}
+.notice {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.7rem;
+  background: rgb(244 211 94 / 0.1);
+  border-left: 3px solid var(--hl);
+  color: #e8dfc8;
+  font: 400 0.7rem/1.4 var(--mono);
+}
+@media (hover: none) {
+  .folder-del {
+    opacity: 0.7;
+  }
+}

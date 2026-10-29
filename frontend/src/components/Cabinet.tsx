@@ -6,10 +6,12 @@ interface Props {
   loading: boolean
   uploading: boolean
   error: string
+  notice: string
   onUpload: (files: File[]) => void
+  onDelete: (doc: DocInfo) => void
 }
 
-export function Cabinet({ docs, loading, uploading, error, onUpload }: Props) {
+export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
   const chunks = docs.reduce((n, d) => n + d.chunks, 0)
@@ -31,6 +33,14 @@ export function Cabinet({ docs, loading, uploading, error, onUpload }: Props) {
             <span className="folder-meta">
               {d.chunks} {d.chunks === 1 ? 'passage' : 'passages'}
             </span>
+            {!!d.quarantined && (
+              <span className="folder-flag" title="Some passages look like prompt injection and are never used for answers">
+                ⚠ {d.quarantined} quarantined
+              </span>
+            )}
+            <button className="folder-del" aria-label={`Delete ${d.title}`} title="Delete this document" onClick={() => onDelete(d)}>
+              ×
+            </button>
           </li>
         ))}
       </ul>
@@ -65,6 +75,11 @@ export function Cabinet({ docs, loading, uploading, error, onUpload }: Props) {
           }}
         />
       </div>
+      {notice && (
+        <p className="notice" role="status" data-testid="notice">
+          {notice}
+        </p>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
