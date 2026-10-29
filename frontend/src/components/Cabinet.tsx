@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { DocInfo } from '../types'
 
 interface Props {
@@ -9,15 +9,17 @@ interface Props {
   notice: string
   onUpload: (files: File[]) => void
   onDelete: (doc: DocInfo) => void
+  children?: ReactNode // rendered above the archive (the conversations list)
 }
 
-export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete }: Props) {
+export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete, children }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
   const chunks = docs.reduce((n, d) => n + d.chunks, 0)
 
   return (
     <aside className="cabinet" aria-label="Document archive">
+      {children}
       <h2 className="eyebrow">The archive</h2>
       <p className="cabinet-count">
         <b>{docs.length}</b> documents <span>·</span> <b>{chunks}</b> passages
@@ -30,8 +32,9 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
           <li key={d.id} className="folder" style={{ animationDelay: `${i * 50}ms` }}>
             <span className="folder-tab" aria-hidden="true" />
             <span className="folder-name">{d.title}</span>
-            <span className="folder-meta">
+            <span className="folder-meta" title={d.private ? 'Only you can see and search this document' : undefined}>
               {d.chunks} {d.chunks === 1 ? 'passage' : 'passages'}
+              {d.private && ' · private'}
             </span>
             {!!d.quarantined && (
               <span className="folder-flag" title="Some passages look like prompt injection and are never used for answers">

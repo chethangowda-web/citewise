@@ -20,7 +20,8 @@ Any small VM with Docker works (2 GB RAM is plenty).
 2. `cp .env.example .env` and set:
    - `GEMINI_API_KEY` (embeddings) and `GROQ_API_KEY` if `LLM_PROVIDER=groq`
    - `POSTGRES_PASSWORD` to a long random value (**before the first start**; the password is baked into the data volume)
-   - `ADMIN_API_KEY` to a long random value if you want the audit ledger
+   - `AUTH_ENABLED=true` and `JWT_SECRET` (a long random value) for a public deployment, so uploads, deletes and history belong to signed-in users; set `ALLOW_SIGNUP=false` once your people have accounts
+   - `ADMIN_API_KEY` to a long random value if you want the audit ledger (with auth on it also lets you remove shared documents)
    - `RATE_LIMIT_PER_MINUTE` (see cost control below)
    - `WEB_PORT=8080` (or another port if you put a TLS proxy in front on 80/443)
 3. `docker compose -f docker-compose.yml up -d --build`
@@ -48,6 +49,7 @@ Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a P
 - [ ] `POSTGRES_PASSWORD` changed from the default `rag`
 - [ ] Only port 80/443 published; database and backend not reachable from outside
 - [ ] HTTPS enabled
+- [ ] `AUTH_ENABLED=true` with a strong `JWT_SECRET` (otherwise anyone can upload and delete shared documents)
 - [ ] `ADMIN_API_KEY` set (or left empty to disable the admin routes entirely)
 - [ ] `.env` is not committed and `.env.example` contains no real keys
 - [ ] Backups for the `pgdata` volume (the audit log and documents live there)

@@ -13,6 +13,7 @@ export interface ChatResponse {
   latency_ms: number
   outcome?: 'answered' | 'refused' | 'blocked'
   tokens?: number
+  session_id?: string
 }
 
 export interface DocInfo {
@@ -21,6 +22,7 @@ export interface DocInfo {
   source: string
   chunks: number
   quarantined?: number
+  private?: boolean
 }
 
 export interface UploadResult {
@@ -36,6 +38,32 @@ export type Turn = {
   status: 'pending' | 'done' | 'error'
   res?: ChatResponse
   error?: string
+  stage?: Stage // real pipeline progress while pending
+  draft?: string // text as it is being written; replaced by the verified answer in `res`
+}
+
+export type Stage = 'screening' | 'retrieving' | 'drafting' | 'verifying'
+
+export interface SessionInfo {
+  id: string
+  title: string
+  updated_at: string
+}
+
+export interface SessionDetail {
+  id: string
+  title: string
+  messages: { id: number; role: 'user' | 'assistant'; content: string; meta: Partial<ChatResponse> }[]
+}
+
+export interface AuthUser {
+  id: number
+  email: string
+}
+
+export interface AuthConfig {
+  auth_enabled: boolean
+  allow_signup: boolean
 }
 
 export interface AdminStats {

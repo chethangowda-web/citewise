@@ -35,7 +35,15 @@ export function TurnView({ turn, selected, onSelect }: { turn: Turn; selected: b
         onClick={onSelect}
         data-testid="answer-sheet"
       >
-        {turn.status === 'pending' && (
+        {turn.status === 'pending' && turn.draft && (
+          <p className="answer draft" data-testid="draft">
+            {turn.draft.replace(/\[\d+\]/g, '')}
+            <span className="draft-note" role="status">
+              {turn.stage === 'verifying' ? ' · verifying…' : ' · draft, not yet verified'}
+            </span>
+          </p>
+        )}
+        {turn.status === 'pending' && !turn.draft && (
           <p className="pending" role="status">
             <span className="dots" aria-hidden="true">
               <i />

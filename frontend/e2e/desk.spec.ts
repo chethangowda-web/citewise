@@ -80,7 +80,7 @@ test('composer: Enter sends, Shift+Enter does not, empty is disabled', async ({ 
 })
 
 test('shows a friendly error when the API is down', async ({ page }) => {
-  await page.route('**/api/chat', (r) => r.fulfill({ status: 503, json: { detail: 'The language model is temporarily unavailable.' } }))
+  await page.route('**/api/chat/stream', (r) => r.fulfill({ status: 503, json: { detail: 'The language model is temporarily unavailable.' } }))
   await ask(page, 'How many sick days do I get?')
   await expect(page.getByRole('alert')).toContainText('temporarily unavailable')
 })

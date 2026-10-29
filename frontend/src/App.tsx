@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { chat, deleteDocument, listDocuments, uploadDocument } from './api'
+import {
+  UNAUTH_EVENT,
+  authConfig,
+  chatStream,
+  deleteDocument,
+  deleteSession,
+  getSession,
+  getToken,
+  listDocuments,
+  listSessions,
+  me,
+  setToken,
+  uploadDocument,
+} from './api'
 import { AuditView } from './components/AuditView'
 import { Cabinet } from './components/Cabinet'
+import { History } from './components/History'
+import { Login } from './components/Login'
 import { Trace } from './components/Trace'
 import { TurnView } from './components/TurnView'
-import type { DocInfo, Turn } from './types'
+import type { AuthConfig, AuthUser, DocInfo, SessionInfo, Turn } from './types'
 
 const MAX_CHARS = 1000
 
@@ -31,8 +46,75 @@ export default function App() {
   const [online, setOnline] = useState<boolean | null>(null)
   const [railOpen, setRailOpen] = useState(false)
   const [view, setView] = useState<'desk' | 'audit'>('desk')
+  const [auth, setAuth] = useState<'loading' | 'login' | 'ready'>('loading')
+  const [authCfg, setAuthCfg] = useState<AuthConfig>({ auth_enabled: false, allow_signup: false })
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authNotice, setAuthNotice] = useState('')
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const nextId = useRef(1)
   const endRef = useRef<HTMLDivElement>(null)
+
+  // Decide whether to show the sign-in screen. When accounts are off the app opens straight away.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cfg = await authConfig()
+        setAuthCfg(cfg)
+        if (!cfg.auth_enabled) return setAuth('ready')
+        if (getToken()) {
+          const u = await me().catch(() => null)
+          if (u) {
+            setUser(u)
+            return setAuth('ready')
+          }
+          setToken(null)
+        }
+        setAuth('login')
+      } catch {
+        setAuth('ready') // backend unreachable: the offline status badge will explain
+        setOnline(false)
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
+    const onUnauth = () => {
+      setUser(null)
+      setTurns([])
+      setSessionId(null)
+      setAuthNotice('Your session expired. Please sign in again.')
+      setAuth('login')
+    }
+    window.addEventListener(UNAUTH_EVENT, onUnauth)
+    return () => window.removeEventListener(UNAUTH_EVENT, onUnauth)
+  }, [])
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(await listSessions())
+    } catch {
+      /* the sidebar is a convenience; chat still works without it */
+    }
+  }, [])
+
+  const signedIn = (u: AuthUser) => {
+    setUser(u)
+    setAuthNotice('')
+    setDocsLoading(true)
+    setAuth('ready')
+  }
+
+  const signOut = () => {
+    setToken(null)
+    setUser(null)
+    setTurns([])
+    setSessions([])
+    setSessionId(null)
+    setDocs([])
+    setAuthNotice('')
+    setAuth('login')
+  }
 
   const refreshDocs = useCallback(async () => {
     try {
@@ -48,8 +130,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (auth !== 'ready') return
     void refreshDocs()
-  }, [refreshDocs])
+    void refreshSessions()
+  }, [auth, refreshDocs, refreshSessions])
 
   useEffect(() => {
     if (turns.length) endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -64,10 +148,16 @@ export default function App() {
     setTurns((t) => [...t, { id, question, status: 'pending' }])
     setSelected(id)
     setDraft('')
+    const patch = (p: Partial<Turn>) => setTurns((t) => t.map((x) => (x.id === id ? { ...x, ...p } : x)))
     try {
-      const res = await chat(question)
-      setTurns((t) => t.map((x) => (x.id === id ? { ...x, status: 'done', res } : x)))
+      const res = await chatStream(question, sessionId, {
+        onStage: (stage) => patch({ stage }),
+        onDraft: (draft) => patch({ draft }),
+      })
+      patch({ status: 'done', res, draft: undefined, stage: undefined })
       setOnline(true)
+      if (res.session_id) setSessionId(res.session_id)
+      void refreshSessions()
     } catch (e) {
       setTurns((t) =>
         t.map((x) => (x.id === id ? { ...x, status: 'error', error: e instanceof Error ? e.message : 'Something went wrong' } : x)),
@@ -108,7 +198,57 @@ export default function App() {
     }
   }
 
+  const newChat = () => {
+    setTurns([])
+    setSessionId(null)
+    setSelected(null)
+  }
+
+  const openSession = async (id: string) => {
+    try {
+      const detail = await getSession(id)
+      const loaded: Turn[] = []
+      for (let i = 0; i + 1 < detail.messages.length; i += 2) {
+        const q = detail.messages[i]
+        const a = detail.messages[i + 1]
+        loaded.push({
+          id: nextId.current++,
+          question: q.content,
+          status: 'done',
+          res: {
+            answer: a.content,
+            sources: a.meta.sources ?? [],
+            flags: a.meta.flags ?? [],
+            latency_ms: a.meta.latency_ms ?? 0,
+            outcome: a.meta.outcome,
+            tokens: a.meta.tokens,
+          },
+        })
+      }
+      setTurns(loaded)
+      setSessionId(id)
+      setSelected(loaded.length ? loaded[loaded.length - 1].id : null)
+      setView('desk')
+    } catch (e) {
+      setDocError(e instanceof Error ? e.message : 'Could not open the conversation')
+    }
+  }
+
+  const removeSession = async (s: SessionInfo) => {
+    if (!window.confirm(`Delete the conversation "${s.title}"?`)) return
+    try {
+      await deleteSession(s.id)
+      if (s.id === sessionId) newChat()
+      await refreshSessions()
+    } catch (e) {
+      setDocError(e instanceof Error ? e.message : 'Could not delete the conversation')
+    }
+  }
+
   const active = turns.find((t) => t.id === selected) ?? turns[turns.length - 1]
+
+  if (auth === 'loading') return <div className="login-wrap" aria-busy="true" />
+  if (auth === 'login') return <Login allowSignup={authCfg.allow_signup} onSignedIn={signedIn} notice={authNotice} />
 
   return (
     <div className={`desk ${railOpen ? 'rail-open' : ''} ${view === 'audit' ? 'view-audit' : ''}`}>
@@ -137,9 +277,17 @@ export default function App() {
         <span className={`status ${online === false ? 'off' : online ? 'on' : ''}`} role="status">
           <i /> {online === false ? 'archive offline' : online ? 'archive online' : 'connecting'}
         </span>
+        {user && (
+          <span className="account">
+            <span title={user.email}>{user.email}</span>
+            <button onClick={signOut}>Sign out</button>
+          </span>
+        )}
       </header>
 
-      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} />
+      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove}>
+        <History sessions={sessions} activeId={sessionId} busy={busy} onNew={newChat} onOpen={openSession} onDelete={removeSession} />
+      </Cabinet>
 
       <main className="dossier">
         <div className="turns">
@@ -215,7 +363,7 @@ export default function App() {
         </div>
       )}
 
-      <Trace res={active?.res} pending={active?.status === 'pending'} runKey={active?.id ?? 0} />
+      <Trace res={active?.res} pending={active?.status === 'pending'} runKey={active?.id ?? 0} stage={active?.stage} />
     </div>
   )
 }

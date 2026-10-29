@@ -418,3 +418,170 @@
     opacity: 0.7;
   }
 }
+
+/* ---------- conversations ---------- */
+.history {
+  margin-bottom: 1.4rem;
+}
+.history-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.history-new {
+  margin-bottom: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  background: none;
+  border: 1px solid #5d564a;
+  border-radius: 3px;
+  color: var(--hl);
+  font: 500 0.66rem var(--mono);
+  letter-spacing: 0.06em;
+}
+.history-new:disabled,
+.history-open:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 3px;
+}
+.history-item.on {
+  background: #2b2a24;
+  box-shadow: inset 3px 0 0 var(--hl);
+}
+.history-open {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  background: none;
+  border: 0;
+  color: #e8dfc8;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-item:hover {
+  background: #262520;
+}
+.history-item .folder-del {
+  grid-row: auto;
+  grid-column: auto;
+  flex: none;
+}
+.history-item:hover .folder-del {
+  opacity: 1;
+}
+
+/* ---------- account + sign-in ---------- */
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font: 400 0.72rem var(--mono);
+  color: #b8ae98;
+}
+.account span {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account button {
+  padding: 0.25rem 0.6rem;
+  background: none;
+  border: 1px solid #5d564a;
+  border-radius: 4px;
+  color: var(--paper);
+  font: 500 0.68rem var(--mono);
+}
+.login-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: var(--paper);
+}
+.login {
+  width: min(24rem, 100%);
+  display: grid;
+  gap: 0.9rem;
+  padding: 2rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--hl);
+  border-radius: 4px;
+  box-shadow: 0 8px 30px rgb(28 26 22 / 0.12);
+}
+.login h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.login p {
+  margin: 0;
+  color: var(--ink-2);
+}
+.login label {
+  display: grid;
+  gap: 0.3rem;
+  font: 500 0.7rem var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.login input {
+  padding: 0.6rem 0.7rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 400 1rem var(--serif);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.login button[type='submit'] {
+  padding: 0.65rem;
+  background: var(--ink);
+  border: 0;
+  border-radius: 3px;
+  color: var(--paper);
+  font-weight: 600;
+}
+.login button:disabled {
+  opacity: 0.6;
+}
+.login .link {
+  background: none;
+  border: 0;
+  color: var(--ink-2);
+  text-decoration: underline;
+  font-size: 0.9rem;
+}
+.login .notice {
+  color: var(--ink);
+}
+
+/* ---------- live draft ---------- */
+.answer.draft {
+  color: var(--ink-2);
+}
+.draft-note {
+  font: 400 0.7rem var(--mono);
+  color: var(--warn);
+  white-space: nowrap;
+}

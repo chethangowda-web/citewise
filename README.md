@@ -78,10 +78,14 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | Generation provider: `gemini` or `groq` (embeddings always use Gemini) |
 | `GEMINI_API_KEY` / `GROQ_API_KEY` | | Provider credentials |
+| `LLM_FALLBACK` | `true` | If the primary provider is out of quota or down, retry on the other one (needs its key). The model that answered is recorded in the audit log |
 | `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` / `GROQ_MODEL` | see `config.py` | Model names (provider models are retired often; list them via the API) |
 | `MIN_RELEVANCE` | `0.55` | Cosine-similarity floor below which the system refuses |
 | `RATE_LIMIT_PER_MINUTE` | `20` | Per client on `/chat` and uploads; `0` disables |
 | `API_KEY` | empty | If set, clients must send `X-API-Key` |
+| `AUTH_ENABLED` | `false` | Turn on accounts: every call except `/health` and `/auth/*` needs a Bearer token, uploads are private to their owner, history is per user. Off = single-user mode |
+| `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
+| `ALLOW_SIGNUP` / `JWT_TTL_MINUTES` / `AUTH_RATE_LIMIT_PER_MINUTE` | `true` / `10080` / `10` | Open or close registration, token lifetime, login attempts per address per minute |
 | `ADMIN_API_KEY` | empty | Enables `/api/admin/*`; with no key those routes return 404 |
 | `TRUSTED_PROXY` | `false` | Read the client IP from `X-Forwarded-For` (set `true` by compose, behind nginx) |
 | `KEYWORD_MODE` | `or` | Full-text matching in hybrid search: `or` (any word) or `and` (all words; see the retrieval ablation) |
@@ -95,9 +99,12 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/chat` | `{question}` returns `{answer, sources, flags, outcome, latency_ms, tokens}` |
-| `GET` / `POST` | `/api/documents` | List, or upload (5 MB max); re-uploading a file replaces it. Responses include how many passages were quarantined |
-| `DELETE` | `/api/documents/{id}` | Remove a document and its passages |
+| `POST` | `/api/chat` | `{question, session_id?}` returns `{answer, sources, flags, outcome, latency_ms, tokens, session_id}`; omit `session_id` to start a conversation |
+| `POST` | `/api/chat/stream` | Same input, as server-sent events: `stage` (screening, retrieving, drafting, verifying), `draft` (the text so far, PII-redacted), then `done` with the verified answer, which replaces the draft. `error` if the model is down |
+| `GET` / `GET` / `DELETE` | `/api/sessions`, `/api/sessions/{id}` | Saved conversations (the stored question is the PII-redacted one) |
+| `POST` / `GET` | `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/auth/config` | Accounts (only when `AUTH_ENABLED=true`) |
+| `GET` / `POST` | `/api/documents` | List, or upload (5 MB max); re-uploading a file replaces it. Responses include how many passages were quarantined. With auth on, an upload is private to its owner |
+| `DELETE` | `/api/documents/{id}` | Remove a document and its passages. Owners delete their own; shared documents need `X-Admin-Key` when auth is on |
 | `GET` | `/api/health` | Checks the database |
 | `GET` | `/api/admin/stats`, `/api/admin/logs` | Header `X-Admin-Key`; outcome split, p50/p95 latency, tokens, estimated cost, recent requests |
 
@@ -117,6 +124,9 @@ Interactive docs are at `/docs` on the backend.
 - Quarantine catches instruction-style payloads in documents. Subtle ones (a polite "note to the assistant", or a false "CFO correction") evade it, and a plausible falsehood is indistinguishable from real content: controlling who can upload and review documents is the answer to that, not detection.
 - Quarantine works per chunk, so legitimate text that shares a chunk with a payload is withheld too (fail-safe, but coarse).
 - Retrieval similarity alone cannot reject questions that *sound* in-domain but aren't covered (a dental-deductible question scored as high as real answerable ones). Those rely on the LLM and the citation check. The golden set includes four such cases.
+- **Streaming shows an unverified draft.** Output verification needs the whole answer (does it cite a real source?), so the live draft can briefly contain text that the final check then replaces with a refusal. The draft is PII-redacted and labelled "not yet verified", and only the verified answer is saved or audited. If that trade-off is not acceptable, use `/api/chat`, which returns nothing until verification is done.
+- **Accounts are deliberately small:** email and password only, no reset flow or email verification, and the token lives in `localStorage` (readable by any script on the page, so an XSS bug would expose it; the CSP in nginx limits that). Documents are either shared (no owner, visible to everyone, removable only by an admin) or private to one user. There is no sharing between users.
+- Conversation history is for review only: the model does not see earlier turns, so a follow-up like "and for contractors?" is answered as a fresh question.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -265,9 +275,10 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 70 tests: unit + real-Postgres integration, fake LLM
-cd frontend && npm test                             # 11 unit tests
-cd frontend && npx playwright test                  # 16 browser tests in Chrome (dev server)
+cd backend  && python -m pytest -q                  # 100 tests: unit + real-Postgres integration, fake LLM
+cd frontend && npm test                             # 17 unit tests (including the SSE parser)
+cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
+cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the same suite against the nginx build
 ```
 
@@ -311,4 +322,4 @@ frontend/nginx/   default.conf, security-headers.conf
 
 ## Roadmap
 
-Streaming responses, conversation memory, document-level access control (and per-role retrieval), sentence-level quarantine instead of whole chunks, a Redis-backed rate limiter, and a larger, human-written retrieval benchmark.
+Conversation memory (feeding earlier turns into retrieval), sharing documents between users and roles, password reset, sentence-level quarantine instead of whole chunks, a Redis-backed rate limiter, and a larger, human-written retrieval benchmark.
