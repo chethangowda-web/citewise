@@ -1,9 +1,8 @@
-import secrets
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.auth import admin_access
 from app.config import get_settings
 from app.db import get_db
 from app.models import AuditLog
@@ -11,15 +10,7 @@ from app.models import AuditLog
 router = APIRouter(prefix="/admin")
 
 
-def require_admin(x_admin_key: str = Header(default="")) -> None:
-    expected = get_settings().admin_api_key
-    if not expected:  # no key configured: admin surface does not exist
-        raise HTTPException(status_code=404, detail="Not found")
-    if not secrets.compare_digest(x_admin_key, expected):
-        raise HTTPException(status_code=401, detail="Invalid or missing admin key")
-
-
-@router.get("/stats", dependencies=[Depends(require_admin)])
+@router.get("/stats", dependencies=[Depends(admin_access)])
 def stats(db: Session = Depends(get_db)):
     s = get_settings()
     row = db.execute(
@@ -57,7 +48,7 @@ def stats(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/logs", dependencies=[Depends(require_admin)])
+@router.get("/logs", dependencies=[Depends(admin_access)])
 def logs(
     limit: int = Query(50, ge=1, le=200),
     outcome: str | None = Query(None, pattern="^(answered|refused|blocked)$"),

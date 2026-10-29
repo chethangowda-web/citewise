@@ -107,7 +107,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _clean_state(client):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE chunks, documents, audit_logs, chat_messages, chat_sessions, users RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE chunks, documents, audit_logs, chat_messages, chat_sessions, team_members, teams, users RESTART IDENTITY CASCADE"))
     limiter.reset()
     yield
 

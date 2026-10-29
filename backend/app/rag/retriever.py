@@ -1,11 +1,11 @@
 import re
 from dataclasses import dataclass
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Chunk, Document
+from app.models import Chunk, Document, TeamMember
 
 RRF_K = 60
 
@@ -25,10 +25,12 @@ def _row(chunk: Chunk, doc: Document, distance: float, score: float) -> Retrieve
 
 
 def visible_to(viewer_id: int | None):
-    """Shared documents (no owner) plus the viewer's own private ones."""
+    """Shared documents (no owner), the viewer's own, and documents of teams the viewer belongs to."""
+    shared = and_(Document.owner_id.is_(None), Document.team_id.is_(None))
     if viewer_id is None:
-        return Document.owner_id.is_(None)
-    return or_(Document.owner_id.is_(None), Document.owner_id == viewer_id)
+        return shared
+    teams = select(TeamMember.team_id).where(TeamMember.user_id == viewer_id)
+    return or_(shared, Document.owner_id == viewer_id, Document.team_id.in_(teams))
 
 
 def vector_search(db: Session, query_vec: list[float], k: int, viewer_id: int | None = None) -> list[Retrieved]:

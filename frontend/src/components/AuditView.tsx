@@ -4,7 +4,7 @@ import type { AdminStats, AuditRow } from '../types'
 
 const OUTCOMES = ['all', 'answered', 'refused', 'blocked'] as const
 
-export function AuditView() {
+export function AuditView({ account = false }: { account?: boolean }) {
   const [key, setKey] = useState(() => sessionStorage.getItem('policyDeskAdminKey') ?? '')
   const [input, setInput] = useState('')
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -15,7 +15,7 @@ export function AuditView() {
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
-    if (!key) return
+    if (!key && !account) return
     setLoading(true)
     setError('')
     try {
@@ -34,13 +34,13 @@ export function AuditView() {
     } finally {
       setLoading(false)
     }
-  }, [key, filter])
+  }, [key, filter, account])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  if (!key) {
+  if (!key && !account) {
     return (
       <section className="audit audit-lock">
         <h2>

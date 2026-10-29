@@ -33,7 +33,16 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS ix_documents_owner_id ON documents (owner_id)",
             # source used to be globally unique; it is now unique per owner (see models.py)
             "ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_source_key",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_owner_source ON documents ((coalesce(owner_id, 0)), source)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(10) NOT NULL DEFAULT 'editor'",
+            # Accounts that predate roles: someone must be able to administer, so the oldest one becomes admin.
+            "UPDATE users SET role = 'admin' WHERE id = (SELECT min(id) FROM users) "
+            "AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE",
+            "CREATE INDEX IF NOT EXISTS ix_documents_team_id ON documents (team_id)",
+            # the unique key now includes the team (see models.py)
+            "DROP INDEX IF EXISTS uq_documents_owner_source",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_scope_source "
+            "ON documents ((coalesce(owner_id, 0)), (coalesce(team_id, 0)), source)",
         ):
             conn.execute(text(ddl))
 

@@ -1,5 +1,8 @@
 import type {
+  AdminDoc,
   AdminStats,
+  AdminTeam,
+  AdminUser,
   AuditRow,
   AuthConfig,
   AuthUser,
@@ -7,8 +10,10 @@ import type {
   DocInfo,
   SessionDetail,
   SessionInfo,
+  Role,
   Stage,
   UploadResult,
+  UploadTarget,
 } from './types'
 
 const TOKEN_KEY = 'policyDeskToken'
@@ -123,9 +128,13 @@ export const deleteSession = (id: string) =>
 
 export const listDocuments = () => fetch('/api/documents', { headers: headers() }).then((r) => parse<DocInfo[]>(r))
 
-export const uploadDocument = (file: File) => {
+export const uploadDocument = (file: File, target?: UploadTarget) => {
   const form = new FormData()
   form.append('file', file)
+  if (target) {
+    form.append('scope', target.scope)
+    if (target.scope === 'team' && target.teamId != null) form.append('team_id', String(target.teamId))
+  }
   return fetch('/api/documents', { method: 'POST', headers: headers(), body: form }).then((r) => parse<UploadResult>(r))
 }
 
@@ -134,12 +143,32 @@ export const deleteDocument = (id: number) =>
     if (!r.ok) await fail(r)
   })
 
-const adminHeaders = (key: string) => ({ 'X-Admin-Key': key })
+// An admin account is recognised by its Bearer token; the admin key (if given) is for script-style access.
+const adminHeaders = (key = '') => headers(key ? { 'X-Admin-Key': key } : {})
 
-export const adminStats = (key: string) =>
+export const adminStats = (key = '') =>
   fetch('/api/admin/stats', { headers: adminHeaders(key) }).then((r) => parse<AdminStats>(r))
 
-export const adminLogs = (key: string, outcome?: string) =>
+export const adminLogs = (key = '', outcome?: string) =>
   fetch(`/api/admin/logs?limit=50${outcome ? `&outcome=${outcome}` : ''}`, { headers: adminHeaders(key) }).then((r) =>
     parse<AuditRow[]>(r),
   )
+
+const adminJson = (method: string, path: string, body?: unknown) =>
+  fetch(`/api/admin${path}`, {
+    method,
+    headers: adminHeaders(),
+    ...(body === undefined ? {} : { body: JSON.stringify(body), headers: headers({ 'Content-Type': 'application/json' }) }),
+  })
+
+const adminDone = (r: Response) => (r.ok ? Promise.resolve() : parse<never>(r).then(() => undefined))
+
+export const adminUsers = () => adminJson('GET', '/users').then((r) => parse<AdminUser[]>(r))
+export const adminSetRole = (id: number, role: Role) => adminJson('PATCH', `/users/${id}`, { role }).then(adminDone)
+export const adminDeleteUser = (id: number) => adminJson('DELETE', `/users/${id}`).then(adminDone)
+export const adminTeams = () => adminJson('GET', '/teams').then((r) => parse<AdminTeam[]>(r))
+export const adminCreateTeam = (name: string) => adminJson('POST', '/teams', { name }).then(adminDone)
+export const adminDeleteTeam = (id: number) => adminJson('DELETE', `/teams/${id}`).then(adminDone)
+export const adminAddMember = (team: number, user: number) => adminJson('PUT', `/teams/${team}/members/${user}`).then(adminDone)
+export const adminRemoveMember = (team: number, user: number) => adminJson('DELETE', `/teams/${team}/members/${user}`).then(adminDone)
+export const adminDocuments = () => adminJson('GET', '/documents').then((r) => parse<AdminDoc[]>(r))

@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
-import type { DocInfo } from '../types'
+import type { AuthUser, DocInfo, UploadTarget } from '../types'
 
 interface Props {
   docs: DocInfo[]
@@ -7,13 +7,20 @@ interface Props {
   uploading: boolean
   error: string
   notice: string
-  onUpload: (files: File[]) => void
+  onUpload: (files: File[], target?: UploadTarget) => void
+  user?: AuthUser | null // set when accounts are on
   onDelete: (doc: DocInfo) => void
   children?: ReactNode // rendered above the archive (the conversations list)
 }
 
-export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete, children }: Props) {
+export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete, user, children }: Props) {
   const input = useRef<HTMLInputElement>(null)
+  const [who, setWho] = useState('private') // private | shared | team:<id>
+  const canUpload = !user || user.role !== 'viewer'
+  const send = (files: File[]) => {
+    if (!user) return onUpload(files)
+    onUpload(files, who.startsWith('team:') ? { scope: 'team', teamId: Number(who.slice(5)) } : { scope: who === 'shared' ? 'shared' : 'private' })
+  }
   const [over, setOver] = useState(false)
   const chunks = docs.reduce((n, d) => n + d.chunks, 0)
 
@@ -32,9 +39,9 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
           <li key={d.id} className="folder" style={{ animationDelay: `${i * 50}ms` }}>
             <span className="folder-tab" aria-hidden="true" />
             <span className="folder-name">{d.title}</span>
-            <span className="folder-meta" title={d.private ? 'Only you can see and search this document' : undefined}>
+            <span className="folder-meta" title={d.scope === 'team' ? `Visible to the ${d.team} team` : d.private ? 'Only you can see and search this document' : undefined}>
               {d.chunks} {d.chunks === 1 ? 'passage' : 'passages'}
-              {d.private && ' · private'}
+              {d.scope === 'team' ? ` · team ${d.team}` : d.private && ' · private'}
             </span>
             {!!d.quarantined && (
               <span className="folder-flag" title="Some passages look like prompt injection and are never used for answers">
@@ -48,7 +55,23 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
         ))}
       </ul>
 
+      {!canUpload && <p className="folder-empty">Your role can read and ask, but not upload.</p>}
+      {canUpload && user && (
+        <label className="scope-pick">
+          Who can see new uploads
+          <select value={who} onChange={(e) => setWho(e.target.value)} data-testid="scope-select">
+            <option value="private">Only me</option>
+            {user.teams.map((t) => (
+              <option key={t.id} value={`team:${t.id}`}>
+                Team {t.name}
+              </option>
+            ))}
+            {user.role === 'admin' && <option value="shared">Everyone</option>}
+          </select>
+        </label>
+      )}
       <div
+        hidden={!canUpload}
         className={`drop ${over ? 'drop-over' : ''}`}
         onDragOver={(e) => {
           e.preventDefault()
@@ -58,7 +81,7 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
         onDrop={(e) => {
           e.preventDefault()
           setOver(false)
-          onUpload(Array.from(e.dataTransfer.files))
+          if (canUpload) send(Array.from(e.dataTransfer.files))
         }}
       >
         <button className="drop-btn" onClick={() => input.current?.click()} disabled={uploading}>
@@ -73,7 +96,7 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
           accept=".pdf,.md,.txt"
           data-testid="file-input"
           onChange={(e) => {
-            onUpload(Array.from(e.target.files ?? []))
+            send(Array.from(e.target.files ?? []))
             e.target.value = ''
           }}
         />

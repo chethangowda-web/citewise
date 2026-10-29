@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # private to their owner, and chat history is per user. When disabled the app is single-user as before.
     auth_enabled: bool = False
     allow_signup: bool = True
+    default_role: str = "editor"  # role of new accounts (the very first account is always admin): editor | viewer
     jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
     jwt_ttl_minutes: int = 60 * 24 * 7
     auth_rate_limit_per_minute: int = 10  # login/register attempts per client address; 0 disables

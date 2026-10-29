@@ -23,6 +23,8 @@ export interface DocInfo {
   chunks: number
   quarantined?: number
   private?: boolean
+  scope?: Scope
+  team?: string | null
 }
 
 export interface UploadResult {
@@ -56,9 +58,46 @@ export interface SessionDetail {
   messages: { id: number; role: 'user' | 'assistant'; content: string; meta: Partial<ChatResponse> }[]
 }
 
+export type Role = 'admin' | 'editor' | 'viewer'
+
+export interface TeamRef {
+  id: number
+  name: string
+}
+
 export interface AuthUser {
   id: number
   email: string
+  role: Role
+  teams: TeamRef[]
+}
+
+export type Scope = 'private' | 'team' | 'shared'
+
+export interface UploadTarget {
+  scope: Scope
+  teamId?: number
+}
+
+export interface AdminUser extends AuthUser {
+  created_at: string
+}
+
+export interface AdminTeam extends TeamRef {
+  documents: number
+  members: { id: number; email: string }[]
+}
+
+export interface AdminDoc {
+  id: number
+  title: string
+  source: string
+  chunks: number
+  scope: Scope
+  owner: string | null
+  team: string | null
+  quarantined: number
+  created_at: string
 }
 
 export interface AuthConfig {

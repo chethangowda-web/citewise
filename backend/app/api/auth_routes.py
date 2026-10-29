@@ -15,8 +15,15 @@ class Credentials(BaseModel):
     password: str = Field(max_length=256)
 
 
+def user_info(user: User) -> dict:
+    return {
+        "id": user.id, "email": user.email, "role": user.role,
+        "teams": [{"id": t.id, "name": t.name} for t in sorted(user.teams, key=lambda t: t.name)],
+    }
+
+
 def _session(user: User) -> dict:
-    return {"token": create_token(user), "user": {"id": user.id, "email": user.email}}
+    return {"token": create_token(user), "user": user_info(user)}
 
 
 @router.get("/config")
@@ -51,4 +58,4 @@ def login(body: Credentials, db: Session = Depends(get_db)):
 
 @router.get("/me")
 def me(user: User | None = Depends(get_current_user)):
-    return {"id": user.id, "email": user.email} if user else None
+    return user_info(user) if user else None

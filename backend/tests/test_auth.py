@@ -119,6 +119,7 @@ def test_shared_documents_are_visible_to_all_but_only_admin_deletes(client, auth
     from app.rag.ingest import ingest_document
 
     shared = ingest_document(db, "handbook.md", "Handbook", "Employees get 25 vacation days per year.")
+    signup(client, "boss@example.com")  # the first account is the admin; alice is an ordinary editor
     alice = signup(client, "alice@example.com")
     docs = client.get("/api/documents", headers=alice).json()
     assert [d["title"] for d in docs] == ["Handbook"] and docs[0]["private"] is False

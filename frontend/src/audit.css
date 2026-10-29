@@ -585,3 +585,131 @@
   color: var(--warn);
   white-space: nowrap;
 }
+
+/* ---------- admin console + upload scope ---------- */
+.admin {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+.admin h2 {
+  margin: 0;
+  font-size: 2rem;
+}
+.admin-lede {
+  margin: 0.2rem 0 1.2rem;
+  color: var(--ink-2);
+}
+.admin-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.admin-tabs button,
+.admin-form button,
+.team-card button,
+.admin-del {
+  padding: 0.3rem 0.8rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 500 0.72rem var(--mono);
+  text-transform: capitalize;
+}
+.admin-tabs .on {
+  background: var(--ink);
+  color: var(--paper);
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.admin-table th {
+  text-align: left;
+  font: 500 0.66rem var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+.admin select,
+.admin-form input {
+  padding: 0.3rem 0.5rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: inherit;
+}
+.admin-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.admin-del {
+  color: var(--stamp);
+  text-transform: none;
+}
+.admin-empty {
+  color: var(--ink-3);
+}
+.team-card {
+  margin-bottom: 1rem;
+  padding: 0.8rem 1rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--hl);
+  border-radius: 3px;
+}
+.team-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+}
+.team-head h3 {
+  margin: 0;
+}
+.team-head span {
+  margin-right: auto;
+  font: 400 0.72rem var(--mono);
+  color: var(--ink-3);
+}
+.team-card ul {
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.team-card li {
+  padding: 0.15rem 0.2rem 0.15rem 0.6rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  font-size: 0.84rem;
+}
+.team-card li button {
+  border: 0;
+  background: none;
+  padding: 0 0.4rem;
+}
+.scope-pick {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.6rem 0 0.4rem;
+  font: 400 0.66rem var(--mono);
+  color: #b8ae98;
+}
+.scope-pick select {
+  padding: 0.3rem;
+  background: #262520;
+  border: 1px solid #5d564a;
+  border-radius: 3px;
+  color: #e8dfc8;
+  font: 400 0.8rem var(--serif);
+}

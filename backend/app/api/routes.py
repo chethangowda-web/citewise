@@ -4,17 +4,17 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import get_current_user, optional_user, require_role
 from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.llm.providers import LLMUnavailable
-from app.models import ChatMessage, ChatSession, Document, User
+from app.models import ChatMessage, ChatSession, Document, Team, TeamMember, User
 from app.observability import rate_limit
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
 from app.rag.pipeline import ChatResult, answer_question, run_pipeline
@@ -164,13 +164,28 @@ def delete_session(session_id: str, db: Session = Depends(get_db), user: User | 
     db.commit()
 
 
+def doc_scope(d: Document) -> str:
+    if d.team_id is not None:
+        return "team"
+    return "private" if d.owner_id is not None else "shared"
+
+
+def _is_admin(user: User | None, admin_key: str) -> bool:
+    expected = get_settings().admin_api_key
+    if expected and admin_key and secrets.compare_digest(admin_key, expected):
+        return True
+    return user is not None and user.role == "admin"
+
+
 @router.get("/documents", dependencies=[Depends(require_api_key)])
 def list_documents(db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
     docs = db.scalars(select(Document).where(visible_to(_uid(user))).order_by(Document.created_at.desc())).all()
+    team_names = {t.id: t.name for t in db.scalars(select(Team))}
     return [
         {
             "id": d.id, "title": d.title, "source": d.source, "chunks": len(d.chunks),
-            "quarantined": sum(c.quarantined for c in d.chunks), "private": d.owner_id is not None,
+            "quarantined": sum(c.quarantined for c in d.chunks), "private": d.owner_id is not None or d.team_id is not None,
+            "scope": doc_scope(d), "team": team_names.get(d.team_id),
         }
         for d in docs
     ]
@@ -181,8 +196,28 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 @router.post("/documents", dependencies=[Depends(require_api_key), Depends(rate_limit)])
 def upload_document(
-    file: UploadFile = File(...), db: Session = Depends(get_db), user: User | None = Depends(get_current_user)
+    file: UploadFile = File(...),
+    scope: str = Form("private"),
+    team_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(require_role("editor")),
 ):
+    """Who may see the upload: `private` (only the uploader), `team` (members of team_id) or `shared`
+    (everyone; admins only). With auth disabled everything is shared, as before accounts existed."""
+    owner_id: int | None = _uid(user)
+    target_team: int | None = None
+    if user is not None:
+        if scope == "shared":
+            if user.role != "admin":
+                raise HTTPException(403, "Only admins can share a document with everyone")
+            owner_id = None
+        elif scope == "team":
+            member = db.scalar(select(TeamMember).where(TeamMember.user_id == user.id, TeamMember.team_id == team_id))
+            if team_id is None or db.get(Team, team_id) is None or (member is None and user.role != "admin"):
+                raise HTTPException(403, "You can only share with a team you belong to")
+            target_team = team_id
+        elif scope != "private":
+            raise HTTPException(422, "scope must be private, team or shared")
     name = file.filename or "upload.txt"
     if not name.lower().endswith((".pdf", ".md", ".txt")):
         raise HTTPException(400, "Only .pdf, .md and .txt files are supported")
@@ -190,26 +225,36 @@ def upload_document(
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large (max 5 MB)")
     try:
-        doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data), _uid(user))
+        doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data), owner_id, target_team)
     except ValueError as e:
         raise HTTPException(422, str(e))
     held = sum(c.quarantined for c in doc.chunks)
-    return {"id": doc.id, "title": doc.title, "chunks": len(doc.chunks), "quarantined": held, "private": doc.owner_id is not None}
+    return {
+        "id": doc.id, "title": doc.title, "chunks": len(doc.chunks), "quarantined": held,
+        "private": doc.owner_id is not None or doc.team_id is not None, "scope": doc_scope(doc),
+    }
 
 
 @router.delete("/documents/{doc_id}", status_code=204, dependencies=[Depends(require_api_key), Depends(rate_limit)])
 def delete_document(
     doc_id: int,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user),
+    user: User | None = Depends(optional_user),
     x_admin_key: str = Header(default=""),
 ):
+    admin = _is_admin(user, x_admin_key)
+    if user is None and not admin and get_settings().auth_enabled:  # the admin key alone is enough for admin work
+        raise HTTPException(401, "Sign in to continue", headers={"WWW-Authenticate": "Bearer"})
     doc = db.get(Document, doc_id)
-    if doc is None or doc.owner_id not in (None, _uid(user)):  # another user's private document looks missing
+    if doc is not None and user is not None and not admin:
+        in_team = doc.team_id is not None and db.scalar(
+            select(TeamMember).where(TeamMember.user_id == user.id, TeamMember.team_id == doc.team_id)
+        )
+        if doc.owner_id not in (None, user.id) and not in_team:
+            doc = None  # a document the user cannot see looks missing
+    if doc is None:
         raise HTTPException(404, "Document not found")
-    if doc.owner_id is None and user is not None:  # shared documents are curated by an admin, not by users
-        admin = get_settings().admin_api_key
-        if not (admin and secrets.compare_digest(x_admin_key, admin)):
-            raise HTTPException(403, "Shared documents can only be removed by an admin")
+    if user is not None and not admin and doc.owner_id != user.id:
+        raise HTTPException(403, "Only the uploader or an admin can remove this document")
     db.delete(doc)
     db.commit()

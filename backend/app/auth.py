@@ -9,7 +9,7 @@ import time
 
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -22,6 +22,7 @@ log = logging.getLogger("rag.auth")
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MIN_PASSWORD = 8
+ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}  # viewers ask; editors also upload; admins manage everything
 _ephemeral_secret = secrets.token_hex(32)
 
 
@@ -82,13 +83,17 @@ def _user_from_token(token: str, db: Session) -> User | None:
         return None
 
 
-def get_current_user(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> User | None:
-    """The signed-in user. None means anonymous, which is only allowed while auth is disabled."""
+def optional_user(authorization: str = Header(default=""), db: Session = Depends(get_db)) -> User | None:
+    """The signed-in user, or None for anonymous / invalid credentials (never raises)."""
     if not get_settings().auth_enabled:
         return None
     scheme, _, token = authorization.partition(" ")
-    user = _user_from_token(token, db) if scheme.lower() == "bearer" and token else None
-    if user is None:
+    return _user_from_token(token, db) if scheme.lower() == "bearer" and token else None
+
+
+def get_current_user(user: User | None = Depends(optional_user)) -> User | None:
+    """The signed-in user. None means anonymous, which is only allowed while auth is disabled."""
+    if user is None and get_settings().auth_enabled:
         raise HTTPException(401, "Sign in to continue", headers={"WWW-Authenticate": "Bearer"})
     return user
 
@@ -102,12 +107,37 @@ def auth_rate_limit(request: Request) -> None:
         raise HTTPException(429, "Too many attempts. Please wait a moment.", headers={"Retry-After": str(int(retry) + 1)})
 
 
+def require_role(minimum: str):
+    """Dependency: the signed-in user must have at least this role. No-op while auth is disabled."""
+
+    def check(user: User | None = Depends(get_current_user)) -> User | None:
+        if user is not None and ROLE_RANK.get(user.role, 0) < ROLE_RANK[minimum]:
+            raise HTTPException(403, f"This needs the {minimum} role")
+        return user
+
+    return check
+
+
+def admin_access(user: User | None = Depends(optional_user), x_admin_key: str = Header(default="")) -> User | None:
+    """Admin endpoints accept either an admin account or the ADMIN_API_KEY header (used by scripts)."""
+    expected = get_settings().admin_api_key
+    if expected and x_admin_key and secrets.compare_digest(x_admin_key, expected):
+        return user
+    if user is not None and user.role == "admin":
+        return user
+    if not expected and not get_settings().auth_enabled:  # nothing configured: the admin surface does not exist
+        raise HTTPException(404, "Not found")
+    raise HTTPException(401 if user is None else 403, "Admin access required")
+
+
 def register_user(db: Session, email: str, password: str) -> User:
     email = normalize_email(email)
     validate_password(password)
     if db.scalar(select(User).where(User.email == email)):
         raise ValueError("An account with this email already exists")
-    user = User(email=email, password_hash=hash_password(password))
+    first = db.scalar(select(func.count()).select_from(User)) == 0  # whoever sets the system up administers it
+    default = get_settings().default_role if get_settings().default_role in ROLE_RANK else "editor"
+    user = User(email=email, password_hash=hash_password(password), role="admin" if first else default)
     db.add(user)
     db.commit()
     return user

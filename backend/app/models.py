@@ -21,7 +21,25 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(254), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(10), default="editor", server_default="editor")  # admin | editor | viewer
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    teams: Mapped[list["Team"]] = relationship(secondary="team_members", back_populates="members")
+
+
+class Team(Base):
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    members: Mapped[list[User]] = relationship(secondary="team_members", back_populates="teams")
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
 
 
 class Document(Base):
@@ -30,15 +48,21 @@ class Document(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255))
     source: Mapped[str] = mapped_column(String(512))
+    # Scope: no owner = shared with everyone; owner only = private; owner + team = visible to that team's members.
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 
 
-# A source name is unique per owner; owner NULL means a shared company document.
-Index("uq_documents_owner_source", func.coalesce(Document.owner_id, 0), Document.source, unique=True)
+# A source name is unique within one scope (shared, one user's private files, or one team's files).
+Index(
+    "uq_documents_scope_source",
+    func.coalesce(Document.owner_id, 0), func.coalesce(Document.team_id, 0), Document.source,
+    unique=True,
+)
 
 
 class Chunk(Base):

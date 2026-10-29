@@ -13,13 +13,14 @@ import {
   setToken,
   uploadDocument,
 } from './api'
+import { AdminView } from './components/AdminView'
 import { AuditView } from './components/AuditView'
 import { Cabinet } from './components/Cabinet'
 import { History } from './components/History'
 import { Login } from './components/Login'
 import { Trace } from './components/Trace'
 import { TurnView } from './components/TurnView'
-import type { AuthConfig, AuthUser, DocInfo, SessionInfo, Turn } from './types'
+import type { AuthConfig, AuthUser, DocInfo, SessionInfo, Turn, UploadTarget } from './types'
 
 const MAX_CHARS = 1000
 
@@ -45,7 +46,7 @@ export default function App() {
   const [docNotice, setDocNotice] = useState('')
   const [online, setOnline] = useState<boolean | null>(null)
   const [railOpen, setRailOpen] = useState(false)
-  const [view, setView] = useState<'desk' | 'audit'>('desk')
+  const [view, setView] = useState<'desk' | 'audit' | 'admin'>('desk')
   const [auth, setAuth] = useState<'loading' | 'login' | 'ready'>('loading')
   const [authCfg, setAuthCfg] = useState<AuthConfig>({ auth_enabled: false, allow_signup: false })
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -165,14 +166,14 @@ export default function App() {
     }
   }
 
-  const upload = async (files: File[]) => {
+  const upload = async (files: File[], target?: UploadTarget) => {
     if (!files.length) return
     setUploading(true)
     setDocError('')
     setDocNotice('')
     for (const f of files) {
       try {
-        const r = await uploadDocument(f)
+        const r = await uploadDocument(f, target)
         if (r.quarantined) {
           setDocNotice(
             `${f.name}: ${r.quarantined} of ${r.chunks} passages look like prompt injection and were quarantined. They will not be used for answers.`,
@@ -251,7 +252,7 @@ export default function App() {
   if (auth === 'login') return <Login allowSignup={authCfg.allow_signup} onSignedIn={signedIn} notice={authNotice} />
 
   return (
-    <div className={`desk ${railOpen ? 'rail-open' : ''} ${view === 'audit' ? 'view-audit' : ''}`}>
+    <div className={`desk ${railOpen ? 'rail-open' : ''} ${view === 'audit' || view === 'admin' ? 'view-audit' : ''}`}>
       <header className="masthead">
         <div className="brand">
           <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true">
@@ -270,6 +271,11 @@ export default function App() {
           <button className={view === 'audit' ? 'on' : ''} aria-pressed={view === 'audit'} onClick={() => setView('audit')}>
             Audit
           </button>
+          {user?.role === 'admin' && (
+            <button className={view === 'admin' ? 'on' : ''} aria-pressed={view === 'admin'} onClick={() => setView('admin')}>
+              Admin
+            </button>
+          )}
         </nav>
         <button className="rail-toggle" onClick={() => setRailOpen((o) => !o)} aria-expanded={railOpen}>
           Archive
@@ -279,13 +285,15 @@ export default function App() {
         </span>
         {user && (
           <span className="account">
-            <span title={user.email}>{user.email}</span>
+            <span title={user.email}>
+              {user.email} · {user.role}
+            </span>
             <button onClick={signOut}>Sign out</button>
           </span>
         )}
       </header>
 
-      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove}>
+      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} user={user}>
         <History sessions={sessions} activeId={sessionId} busy={busy} onNew={newChat} onOpen={openSession} onDelete={removeSession} />
       </Cabinet>
 
@@ -359,7 +367,12 @@ export default function App() {
 
       {view === 'audit' && (
         <div className="audit-wrap">
-          <AuditView />
+          <AuditView account={user?.role === 'admin'} />
+        </div>
+      )}
+      {view === 'admin' && user && (
+        <div className="audit-wrap">
+          <AdminView meId={user.id} />
         </div>
       )}
 
