@@ -51,6 +51,7 @@ class ChatResponse(BaseModel):
     outcome: str
     tokens: int = 0
     session_id: str = ""
+    interpreted_as: str = ""
 
 
 def _uid(user: User | None) -> int | None:
@@ -64,6 +65,21 @@ def _own_session(db: Session, session_id: str, user: User | None) -> ChatSession
     return sess
 
 
+def session_history(sess: ChatSession | None) -> list[tuple[str, str]]:
+    """Earlier (question, answer) pairs of a conversation, oldest first, for understanding follow-ups.
+
+    Blocked turns are left out: a question the guardrails rejected must not steer the next one.
+    """
+    if sess is None:
+        return []
+    msgs = sess.messages
+    pairs = []
+    for q, a in zip(msgs[0::2], msgs[1::2]):
+        if (a.meta or {}).get("outcome") != "blocked":
+            pairs.append((q.content, a.content))
+    return pairs[-max(get_settings().memory_turns, 0) :] if get_settings().memory_turns > 0 else []
+
+
 def save_turn(db: Session, user: User | None, session_id: str | None, result: ChatResult) -> str:
     """Append this exchange to a conversation (creating it if needed) and return its id."""
     sess = _own_session(db, session_id, user) if session_id else None
@@ -74,6 +90,7 @@ def save_turn(db: Session, user: User | None, session_id: str | None, result: Ch
     meta = {
         "sources": [vars(x) for x in result.sources], "flags": result.flags, "outcome": result.outcome,
         "latency_ms": result.latency_ms, "tokens": result.prompt_tokens + result.completion_tokens,
+        "interpreted_as": result.interpreted_as,
     }
     sess.messages.append(ChatMessage(role="user", content=result.question))
     sess.messages.append(ChatMessage(role="assistant", content=result.answer, meta=meta))
@@ -89,10 +106,9 @@ def health(db: Session = Depends(get_db)):
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key), Depends(rate_limit)])
 def chat(req: ChatRequest, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
-    if req.session_id:
-        _own_session(db, req.session_id, user)  # fail before spending an LLM call
+    sess = _own_session(db, req.session_id, user) if req.session_id else None  # fail before spending an LLM call
     try:
-        result = answer_question(db, req.question, _uid(user))
+        result = answer_question(db, req.question, _uid(user), history=session_history(sess))
     except LLMUnavailable as e:
         log.warning("llm_unavailable", extra={"error": str(e)[:400]})  # root cause (quota, outage) for operators
         raise HTTPException(503, "The language model is temporarily unavailable. Please try again shortly.")
@@ -108,6 +124,7 @@ def _response(result: ChatResult, session_id: str) -> ChatResponse:
         outcome=result.outcome,
         tokens=result.prompt_tokens + result.completion_tokens,
         session_id=session_id,
+        interpreted_as=result.interpreted_as,
     )
 
 
@@ -119,13 +136,13 @@ def _sse(event: str, data: object) -> str:
 def chat_stream(req: ChatRequest, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
     """Server-sent events: `stage` as the pipeline advances, `draft` (full text so far, PII-redacted) while the
     model writes, then `done` with the verified answer, which replaces the draft. `error` if the model is down."""
-    if req.session_id:
-        _own_session(db, req.session_id, user)  # a plain 404 before the stream opens
+    sess = _own_session(db, req.session_id, user) if req.session_id else None  # a plain 404 before the stream opens
+    history = session_history(sess)  # read now: the request session may be closed before the stream runs
 
     def events():
         with SessionLocal() as stream_db:  # the request-scoped session may be closed before the stream ends
             try:
-                for kind, payload in run_pipeline(stream_db, req.question, _uid(user), stream=True):
+                for kind, payload in run_pipeline(stream_db, req.question, _uid(user), stream=True, history=history):
                     if kind == "result":
                         sid = save_turn(stream_db, user, req.session_id, payload)  # type: ignore[arg-type]
                         yield _sse("done", _response(payload, sid).model_dump())  # type: ignore[arg-type]

@@ -713,3 +713,13 @@
   color: #e8dfc8;
   font: 400 0.8rem var(--serif);
 }
+
+/* ---------- follow-up interpretation ---------- */
+.interpreted {
+  margin: -0.2rem 0 0.5rem 2.1rem;
+  font: 400 0.76rem var(--mono);
+  color: var(--ink-3);
+}
+.interpreted em {
+  color: var(--ink-2);
+}

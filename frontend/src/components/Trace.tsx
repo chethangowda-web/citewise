@@ -8,7 +8,7 @@ const IDLE = [
   { id: 'draft', label: 'Draft', note: 'answer from retrieved passages only' },
   { id: 'verify', label: 'Verify', note: 'every claim needs a real citation' },
 ]
-const STAGE_INDEX: Record<Stage, number> = { screening: 0, retrieving: 1, drafting: 2, verifying: 3 }
+const STAGE_INDEX: Record<Stage, number> = { screening: 0, understanding: 1, retrieving: 1, drafting: 2, verifying: 3 }
 const GLYPH = { pass: '✓', warn: '!', fail: '✕', skipped: '–' } as const
 
 export function Trace({

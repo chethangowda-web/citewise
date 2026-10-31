@@ -223,6 +223,7 @@ export default function App() {
             latency_ms: a.meta.latency_ms ?? 0,
             outcome: a.meta.outcome,
             tokens: a.meta.tokens,
+            interpreted_as: a.meta.interpreted_as,
           },
         })
       }

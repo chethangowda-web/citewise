@@ -85,6 +85,7 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `API_KEY` | empty | If set, clients must send `X-API-Key` |
 | `AUTH_ENABLED` | `false` | Turn on accounts: every call except `/health` and `/auth/*` needs a Bearer token, uploads are private to their owner, history is per user. Off = single-user mode |
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
+| `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
 | `DEFAULT_ROLE` | `editor` | Role of new accounts: `editor` (can upload) or `viewer` (read and ask only). The first account is always admin; on a database that predates roles the oldest account is promoted at startup |
 | `ALLOW_SIGNUP` / `JWT_TTL_MINUTES` / `AUTH_RATE_LIMIT_PER_MINUTE` | `true` / `10080` / `10` | Open or close registration, token lifetime, login attempts per address per minute |
 | `ADMIN_API_KEY` | empty | Enables `/api/admin/*`; with no key those routes return 404 |
@@ -100,8 +101,8 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/chat` | `{question, session_id?}` returns `{answer, sources, flags, outcome, latency_ms, tokens, session_id}`; omit `session_id` to start a conversation |
-| `POST` | `/api/chat/stream` | Same input, as server-sent events: `stage` (screening, retrieving, drafting, verifying), `draft` (the text so far, PII-redacted), then `done` with the verified answer, which replaces the draft. `error` if the model is down |
+| `POST` | `/api/chat` | `{question, session_id?}` returns `{answer, sources, flags, outcome, latency_ms, tokens, session_id, interpreted_as}`; omit `session_id` to start a conversation |
+| `POST` | `/api/chat/stream` | Same input, as server-sent events: `stage` (screening, understanding, retrieving, drafting, verifying), `draft` (the text so far, PII-redacted), then `done` with the verified answer, which replaces the draft. `error` if the model is down |
 | `GET` / `GET` / `DELETE` | `/api/sessions`, `/api/sessions/{id}` | Saved conversations (the stored question is the PII-redacted one) |
 | `GET` / `PATCH` / `DELETE` | `/api/admin/users[/{id}]` | Admin only (an admin account or `X-Admin-Key`): list users, change a role, delete a user. The last admin is protected |
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
@@ -130,7 +131,7 @@ Interactive docs are at `/docs` on the backend.
 - Retrieval similarity alone cannot reject questions that *sound* in-domain but aren't covered (a dental-deductible question scored as high as real answerable ones). Those rely on the LLM and the citation check. The golden set includes four such cases.
 - **Streaming shows an unverified draft.** Output verification needs the whole answer (does it cite a real source?), so the live draft can briefly contain text that the final check then replaces with a refusal. The draft is PII-redacted and labelled "not yet verified", and only the verified answer is saved or audited. If that trade-off is not acceptable, use `/api/chat`, which returns nothing until verification is done.
 - **Accounts are deliberately small:** email and password only, no reset flow or email verification, and the token lives in `localStorage` (readable by any script on the page, so an XSS bug would expose it; the CSP in nginx limits that). Roles are admin, editor and viewer. A document is shared (everyone), private (its uploader) or a team's (that team's members): retrieval only searches what the asker may see, and an admin's own answers follow the same rule (the admin console lists everything, chat does not). Team documents outlive the person who uploaded them. There is no per-document sharing with individuals.
-- Conversation history is for review only: the model does not see earlier turns, so a follow-up like "and for contractors?" is answered as a fresh question.
+- **Conversation memory is a rewrite, not a transcript.** A follow-up is first rewritten into a standalone question using the last few turns, and only that question is searched and answered, so the strict "answer only from the documents" prompt never sees the chat. The cost is one extra model call per follow-up. The rewrite is screened again and discarded if it is empty, too long, an attack, or the model is down, in which case your original question is used. Blocked turns are never fed back in. A rewrite can still misread an ambiguous follow-up; the UI shows "Understood as: ..." so you can see when it did.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -279,11 +280,12 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 113 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 128 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 17 unit tests (including the SSE parser)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
 cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the same suite against the nginx build
 ```
 
@@ -327,4 +329,4 @@ frontend/nginx/   default.conf, security-headers.conf
 
 ## Roadmap
 
-Conversation memory (feeding earlier turns into retrieval), per-document sharing with individuals, password reset, sentence-level quarantine instead of whole chunks, a Redis-backed rate limiter, and a larger, human-written retrieval benchmark.
+Per-document sharing with individuals, password reset, sentence-level quarantine instead of whole chunks, a Redis-backed rate limiter, and a larger, human-written retrieval benchmark.

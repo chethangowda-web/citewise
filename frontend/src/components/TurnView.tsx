@@ -30,6 +30,12 @@ export function TurnView({ turn, selected, onSelect }: { turn: Turn; selected: b
         )}
       </p>
 
+      {res?.interpreted_as && (
+        <p className="interpreted" data-testid="interpreted">
+          Understood as: <em>{res.interpreted_as}</em>
+        </p>
+      )}
+
       <div
         className={`sheet ${selected ? 'selected' : ''} ${verdict ? `v-${verdict}` : ''}`}
         onClick={onSelect}
@@ -50,7 +56,7 @@ export function TurnView({ turn, selected, onSelect }: { turn: Turn; selected: b
               <i />
               <i />
             </span>
-            The clerk is checking the archive
+            {turn.stage === 'understanding' ? 'Reading your question in context' : 'The clerk is checking the archive'}
           </p>
         )}
         {turn.status === 'error' && (

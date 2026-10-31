@@ -60,27 +60,39 @@ class FakeEmbedder:
 
 
 class FakeLLM:
-    """Scriptable generator; records every prompt it receives."""
+    """Scriptable generator; records every prompt it receives.
+
+    `queue` holds one scripted reply (or an Exception to raise) per call, consumed in order; when it is
+    empty every call returns `reply`. That lets a test script the rewrite call and the answer call apart.
+    """
 
     def __init__(self):
         self.reply = "The policy says so [1]."
         self.error: Exception | None = None
+        self.queue: list = []
         self.calls: list[tuple[str, str]] = []
+
+    def _next(self) -> str:
+        if self.queue:
+            item = self.queue.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+        if self.error:
+            raise self.error
+        return self.reply
 
     def generate(self, system, prompt):
         self.calls.append((system, prompt))
-        if self.error:
-            raise self.error
-        return Generation(self.reply, "fake-model", 120, 25)
+        return Generation(self._next(), "fake-model", 120, 25)
 
     def stream(self, system, prompt):
         self.calls.append((system, prompt))
-        if self.error:
-            raise self.error
-        words = self.reply.split(" ")
+        text = self._next()
+        words = text.split(" ")
         for i, w in enumerate(words):
             yield w + (" " if i < len(words) - 1 else "")
-        yield Generation(self.reply, "fake-model", 120, 25)
+        yield Generation(text, "fake-model", 120, 25)
 
 
 @pytest.fixture(autouse=True)

@@ -14,6 +14,7 @@ export interface ChatResponse {
   outcome?: 'answered' | 'refused' | 'blocked'
   tokens?: number
   session_id?: string
+  interpreted_as?: string // the standalone question searched for, when a follow-up was rewritten
 }
 
 export interface DocInfo {
@@ -44,7 +45,7 @@ export type Turn = {
   draft?: string // text as it is being written; replaced by the verified answer in `res`
 }
 
-export type Stage = 'screening' | 'retrieving' | 'drafting' | 'verifying'
+export type Stage = 'screening' | 'understanding' | 'retrieving' | 'drafting' | 'verifying'
 
 export interface SessionInfo {
   id: string

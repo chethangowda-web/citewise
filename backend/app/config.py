@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # Guardrails / API
     max_question_chars: int = 1000
+    memory_turns: int = 3  # earlier exchanges used to understand a follow-up question; 0 turns memory off
     api_key: str = ""  # if set, clients must send X-API-Key
     cors_origins: str = "http://localhost:5173"
     # Accounts. When enabled every API call except /health and /auth/* needs a Bearer token, uploads are
