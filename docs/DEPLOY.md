@@ -21,6 +21,8 @@ Any small VM with Docker works (2 GB RAM is plenty).
    - `GEMINI_API_KEY` (embeddings) and `GROQ_API_KEY` if `LLM_PROVIDER=groq`
    - `POSTGRES_PASSWORD` to a long random value (**before the first start**; the password is baked into the data volume)
    - `AUTH_ENABLED=true` and `JWT_SECRET` (a long random value) for a public deployment, so uploads, deletes and history belong to signed-in users; set `ALLOW_SIGNUP=false` once your people have accounts
+   - `COOKIE_SECURE=true` once HTTPS is in place, and `PUBLIC_URL=https://your.domain` so password-reset links point at the right place
+   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` so reset emails are really sent (without them the link is only written to the log)
    - `ADMIN_API_KEY` to a long random value if you want the audit ledger (with auth on it also lets you remove shared documents)
    - `RATE_LIMIT_PER_MINUTE` (see cost control below)
    - `WEB_PORT=8080` (or another port if you put a TLS proxy in front on 80/443)
@@ -50,6 +52,8 @@ Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a P
 - [ ] Only port 80/443 published; database and backend not reachable from outside
 - [ ] HTTPS enabled
 - [ ] `AUTH_ENABLED=true` with a strong `JWT_SECRET` (otherwise anyone can upload and delete shared documents)
+- [ ] `COOKIE_SECURE=true` and HTTPS in front, so the session cookie is never sent over plain HTTP
+- [ ] SMTP configured (a reset link written to the log is a credential: anyone who can read the log can take over an account)
 - [ ] `ADMIN_API_KEY` set (or left empty to disable the admin routes entirely)
 - [ ] `.env` is not committed and `.env.example` contains no real keys
 - [ ] Backups for the `pgdata` volume (the audit log and documents live there)

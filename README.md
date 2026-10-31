@@ -87,6 +87,10 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
 | `STALE_AFTER_DAYS` | `365` | An answer citing a document older than this carries an outdated-source warning (still answered, not refused); `0` turns it off |
 | `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
+| `LOCKOUT_ATTEMPTS` / `LOCKOUT_MINUTES` | `5` / `15` | Wrong passwords for one email before it is locked, and for how long (`0` attempts disables). Applies to any email, existing or not, so it reveals nothing about accounts |
+| `RESET_TTL_MINUTES` / `PUBLIC_URL` | `30` / `http://localhost:8080` | How long a password-reset link lives (it also works only once), and the address used to build it |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | empty | Where reset emails go. **With no `SMTP_HOST` the message, including its link, is written to the backend log**, which is fine locally and not for production |
+| `COOKIE_SECURE` | `auto` | Secure flag of the session cookie: `auto`, `true` or `false`. **Set `true` when serving over HTTPS** |
 | `DEFAULT_ROLE` | `editor` | Role of new accounts: `editor` (can upload) or `viewer` (read and ask only). The first account is always admin; on a database that predates roles the oldest account is promoted at startup |
 | `ALLOW_SIGNUP` / `JWT_TTL_MINUTES` / `AUTH_RATE_LIMIT_PER_MINUTE` | `true` / `10080` / `10` | Open or close registration, token lifetime, login attempts per address per minute |
 | `ADMIN_API_KEY` | empty | Enables `/api/admin/*`; with no key those routes return 404 |
@@ -109,6 +113,9 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
 | `GET` | `/api/admin/documents` | Every document and version, who can see it, and its status (`current` or `superseded`) |
 | `POST` | `/api/admin/documents/{id}/restore` | Make an archived version current again; the one it replaces is archived |
+| `POST` | `/api/auth/logout`, `/api/auth/logout-all` | Clear this session's cookie; or end every session of the user on every device |
+| `POST` | `/api/auth/change-password` | `{current_password, new_password}`; signs other devices out, keeps this one |
+| `POST` | `/api/auth/forgot`, `/api/auth/reset` | Request a reset link (always answers the same, whether or not the address has an account); set a new password with `{token, password}` |
 | `POST` / `GET` | `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/auth/config` | Accounts (only when `AUTH_ENABLED=true`) |
 | `GET` / `POST` | `/api/documents` | List, or upload (5 MB max); re-uploading a file replaces it. Responses include how many passages were quarantined. Optional `effective_date` (`2026-03-01`) records when a policy took effect. Re-uploading the same file with changed text keeps the old text as an archived version and files the new one as current; identical text changes nothing and costs no embedding calls. With auth on, form field `scope` is `private` (default), `team` (+ `team_id`, members only) or `shared` (admins only); viewers cannot upload |
 | `DELETE` | `/api/documents/{id}` | Remove a document, every archived version of it, and all their passages. The uploader or an admin; shared documents need an admin account or `X-Admin-Key` when auth is on |
@@ -132,7 +139,7 @@ Interactive docs are at `/docs` on the backend.
 - Quarantine works per chunk, so legitimate text that shares a chunk with a payload is withheld too (fail-safe, but coarse).
 - Retrieval similarity alone cannot reject questions that *sound* in-domain but aren't covered (a dental-deductible question scored as high as real answerable ones). Those rely on the LLM and the citation check. The golden set includes four such cases.
 - **Streaming shows an unverified draft.** Output verification needs the whole answer (does it cite a real source?), so the live draft can briefly contain text that the final check then replaces with a refusal. The draft is PII-redacted and labelled "not yet verified", and only the verified answer is saved or audited. If that trade-off is not acceptable, use `/api/chat`, which returns nothing until verification is done.
-- **Accounts are deliberately small:** email and password only, no reset flow or email verification, and the token lives in `localStorage` (readable by any script on the page, so an XSS bug would expose it; the CSP in nginx limits that). Roles are admin, editor and viewer. A document is shared (everyone), private (its uploader) or a team's (that team's members): retrieval only searches what the asker may see, and an admin's own answers follow the same rule (the admin console lists everything, chat does not). Team documents outlive the person who uploaded them. There is no per-document sharing with individuals.
+- **Accounts are deliberately small:** email and password only, with no email verification and no two-factor sign-in (password reset exists, but it is only as safe as the mailbox it is sent to). The web app's session is an HttpOnly, SameSite=Lax cookie (no token in `localStorage`, so a script injected into the page cannot steal it), and requests that change data must carry a custom `X-Requested-With` header, which cross-site pages cannot send (CSRF). API clients without that header get a Bearer token in the response instead. Sessions can be revoked: changing or resetting a password, or "sign out everywhere", invalidates every token issued before it. Login lockout is stored in the database and so survives restarts, but the per-address rate limiter is not. Roles are admin, editor and viewer. A document is shared (everyone), private (its uploader) or a team's (that team's members): retrieval only searches what the asker may see, and an admin's own answers follow the same rule (the admin console lists everything, chat does not). Team documents outlive the person who uploaded them. There is no per-document sharing with individuals.
 - **Conversation memory is a rewrite, not a transcript.** A follow-up is first rewritten into a standalone question using the last few turns, and only that question is searched and answered, so the strict "answer only from the documents" prompt never sees the chat. The cost is one extra model call per follow-up. The rewrite is screened again and discarded if it is empty, too long, an attack, or the model is down, in which case your original question is used. Blocked turns are never fed back in. A rewrite can still misread an ambiguous follow-up; the UI shows "Understood as: ..." so you can see when it did.
 - **Freshness is by date, not by meaning.** The outdated-source warning compares a document's effective date (or the day it was filed) with `STALE_AFTER_DAYS`; it cannot tell that a newer policy elsewhere contradicts an older one. Archived versions are kept for history and restore but never searched, and deleting a document deletes its whole history.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
@@ -283,13 +290,14 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 140 tests: unit + real-Postgres integration, fake LLM
-cd frontend && npm test                             # 17 unit tests (including the SSE parser)
+cd backend  && python -m pytest -q                  # 169 tests: unit + real-Postgres integration, fake LLM
+cd frontend && npm test                             # 18 unit tests (including the SSE parser)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test versions  # +1 versioning, freshness and restore test (real model)
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test security  # +4: cookie, reset link, sign out everywhere, change password
 cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the same suite against the nginx build
 ```
 

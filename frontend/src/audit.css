@@ -747,3 +747,85 @@
   font: 400 0.8rem var(--serif);
   color-scheme: dark;
 }
+
+/* ---------- account panel ---------- */
+.account-panel {
+  position: fixed;
+  top: 4.2rem;
+  right: 1rem;
+  z-index: 20;
+  width: min(22rem, calc(100% - 2rem));
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem 1.1rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--hl);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgb(28 26 22 / 0.25);
+  color: var(--ink);
+}
+.account-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.account-panel header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9rem;
+}
+.account-panel header button {
+  border: 0;
+  background: none;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.account-panel form {
+  display: grid;
+  gap: 0.5rem;
+}
+.account-panel label {
+  display: grid;
+  gap: 0.2rem;
+  font: 500 0.64rem var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.account-panel input {
+  padding: 0.45rem 0.6rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 400 0.95rem var(--serif);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.account-panel button[type="submit"],
+.account-danger button {
+  padding: 0.5rem;
+  background: var(--ink);
+  border: 0;
+  border-radius: 3px;
+  color: var(--paper);
+  font-weight: 600;
+}
+.account-danger {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
+}
+.account-danger p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.85rem;
+}
+.account-danger button {
+  background: var(--stamp);
+}
+.account-panel .notice {
+  color: var(--ink);
+}

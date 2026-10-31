@@ -16,18 +16,14 @@ import type {
   UploadTarget,
 } from './types'
 
-const TOKEN_KEY = 'policyDeskToken'
 export const UNAUTH_EVENT = 'policy-desk-unauth'
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY)
-export const setToken = (t: string | null) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY))
-
 function headers(extra: Record<string, string> = {}) {
-  const out: Record<string, string> = { ...extra }
+  // The session lives in an HttpOnly cookie that scripts cannot read. This header asks the server for a cookie
+  // session and proves the request comes from our own page (cross-site forms cannot set it): CSRF protection.
+  const out: Record<string, string> = { ...extra, 'X-Requested-With': 'citewise' }
   const key = localStorage.getItem('policyDeskApiKey')
   if (key) out['X-API-Key'] = key
-  const token = getToken()
-  if (token) out.Authorization = `Bearer ${token}`
   return out
 }
 
@@ -39,10 +35,9 @@ async function fail(r: Response): Promise<never> {
   } catch {
     /* non-JSON error body */
   }
-  // An expired or revoked token (the API marks these with a Bearer challenge; a wrong admin key is not one):
+  // An expired or revoked session (the API marks these with a Bearer challenge; a wrong admin key is not one):
   // tell the app to show the sign-in screen again.
-  if (r.status === 401 && getToken() && r.headers.get('WWW-Authenticate')?.includes('Bearer')) {
-    setToken(null)
+  if (r.status === 401 && r.headers.get('WWW-Authenticate')?.includes('Bearer')) {
     window.dispatchEvent(new Event(UNAUTH_EVENT))
   }
   throw new Error(detail)
@@ -98,7 +93,7 @@ export const authConfig = () => fetch('/api/auth/config').then((r) => parse<Auth
 export const signIn = (mode: 'login' | 'register', email: string, password: string) =>
   fetch(`/api/auth/${mode}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ email, password }),
   }).then(async (r) => {
     if (!r.ok) {
@@ -112,10 +107,27 @@ export const signIn = (mode: 'login' | 'register', email: string, password: stri
       }
       throw new Error(detail)
     }
-    return (await r.json()) as { token: string; user: AuthUser }
+    return (await r.json()) as { user: AuthUser }
   })
 
-export const me = () => fetch('/api/auth/me', { headers: headers() }).then((r) => parse<AuthUser | null>(r))
+// Not signed in is a normal answer here, not an expired session, so this never raises the sign-in event.
+export const me = () => fetch('/api/auth/me', { headers: headers() }).then((r) => (r.ok ? (r.json() as Promise<AuthUser | null>) : null))
+
+const authPost = (path: string, body?: unknown) =>
+  fetch(`/api/auth/${path}`, {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(async (r) => {
+    if (!r.ok) await fail(r)
+  })
+
+export const logout = () => authPost('logout').catch(() => undefined)
+export const logoutAll = () => authPost('logout-all')
+export const changePassword = (current_password: string, new_password: string) =>
+  authPost('change-password', { current_password, new_password })
+export const forgotPassword = (email: string) => authPost('forgot', { email })
+export const resetPassword = (token: string, password: string) => authPost('reset', { token, password })
 
 export const listSessions = () => fetch('/api/sessions', { headers: headers() }).then((r) => parse<SessionInfo[]>(r))
 

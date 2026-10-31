@@ -6,18 +6,19 @@ import {
   deleteDocument,
   deleteSession,
   getSession,
-  getToken,
+  logout,
   listDocuments,
   listSessions,
   me,
-  setToken,
   uploadDocument,
 } from './api'
+import { AccountPanel } from './components/AccountPanel'
 import { AdminView } from './components/AdminView'
 import { AuditView } from './components/AuditView'
 import { Cabinet } from './components/Cabinet'
 import { History } from './components/History'
 import { Login } from './components/Login'
+import { ResetPassword } from './components/ResetPassword'
 import { Trace } from './components/Trace'
 import { TurnView } from './components/TurnView'
 import type { AuthConfig, AuthUser, DocInfo, SessionInfo, Turn, UploadTarget } from './types'
@@ -51,6 +52,9 @@ export default function App() {
   const [authCfg, setAuthCfg] = useState<AuthConfig>({ auth_enabled: false, allow_signup: false })
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authNotice, setAuthNotice] = useState('')
+  const [accountOpen, setAccountOpen] = useState(false)
+  // the link in a password-reset email opens the app at /?reset=<token>
+  const [resetToken, setResetToken] = useState<string | null>(() => new URLSearchParams(window.location.search).get('reset'))
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const nextId = useRef(1)
@@ -63,13 +67,10 @@ export default function App() {
         const cfg = await authConfig()
         setAuthCfg(cfg)
         if (!cfg.auth_enabled) return setAuth('ready')
-        if (getToken()) {
-          const u = await me().catch(() => null)
-          if (u) {
-            setUser(u)
-            return setAuth('ready')
-          }
-          setToken(null)
+        const u = await me().catch(() => null) // the session cookie, if there is one
+        if (u) {
+          setUser(u)
+          return setAuth('ready')
         }
         setAuth('login')
       } catch {
@@ -107,7 +108,8 @@ export default function App() {
   }
 
   const signOut = () => {
-    setToken(null)
+    void logout() // asks the server to clear the session cookie
+    setAccountOpen(false)
     setUser(null)
     setTurns([])
     setSessions([])
@@ -253,6 +255,16 @@ export default function App() {
 
   const active = turns.find((t) => t.id === selected) ?? turns[turns.length - 1]
 
+  if (resetToken)
+    return (
+      <ResetPassword
+        token={resetToken}
+        onDone={() => {
+          window.history.replaceState(null, '', window.location.pathname)
+          setResetToken(null)
+        }}
+      />
+    )
   if (auth === 'loading') return <div className="login-wrap" aria-busy="true" />
   if (auth === 'login') return <Login allowSignup={authCfg.allow_signup} onSignedIn={signedIn} notice={authNotice} />
 
@@ -293,10 +305,14 @@ export default function App() {
             <span title={user.email}>
               {user.email} · {user.role}
             </span>
+            <button onClick={() => setAccountOpen((o) => !o)} aria-expanded={accountOpen}>
+              Account
+            </button>
             <button onClick={signOut}>Sign out</button>
           </span>
         )}
       </header>
+      {accountOpen && user && <AccountPanel email={user.email} onClose={() => setAccountOpen(false)} onSignedOut={signOut} />}
 
       <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} user={user}>
         <History sessions={sessions} activeId={sessionId} busy={busy} onNew={newChat} onOpen={openSession} onDelete={removeSession} />

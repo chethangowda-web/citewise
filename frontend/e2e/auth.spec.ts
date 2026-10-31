@@ -8,6 +8,15 @@ const stamp = Date.now()
 const alice = `alice${stamp}@example.com`
 const bob = `bob${stamp}@example.com`
 
+test.afterAll(async ({ request }) => {
+  // leave the real database as we found it (needs the admin key; skipped without it)
+  const key = process.env.E2E_ADMIN_KEY
+  if (!key) return
+  const headers = { 'X-Admin-Key': key }
+  const users = (await (await request.get('/api/admin/users', { headers })).json()) as { id: number; email: string }[]
+  for (const u of users.filter((x) => x.email.endsWith(`${stamp}@example.com`))) await request.delete(`/api/admin/users/${u.id}`, { headers })
+})
+
 const signUp = async (page: Page, email: string) => {
   await page.getByRole('button', { name: /Create an account/ }).click()
   await page.getByLabel('Email').fill(email)
@@ -70,7 +79,8 @@ test('the app is locked until you sign in, and private uploads and history stay 
 test('a session that has expired sends you back to sign in', async ({ page }) => {
   await page.goto('/')
   await signUp(page, `carol${stamp}@example.com`)
-  await page.evaluate(() => localStorage.setItem('policyDeskToken', 'garbage'))
+  // replace the session cookie with a forged one
+  await page.context().addCookies([{ name: 'citewise_session', value: 'garbage', url: new URL(page.url()).origin }])
   await page.reload()
   await expect(page.getByRole('form', { name: 'Sign in' })).toBeVisible()
 })

@@ -22,8 +22,32 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(10), default="editor", server_default="editor")  # admin | editor | viewer
+    # Bumping this signs the user out everywhere: tokens carry the version they were issued under.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     teams: Mapped[list["Team"]] = relationship(secondary="team_members", back_populates="members")
+
+
+class PasswordReset(Base):
+    """A pending reset link. Only a hash of the token is stored, and a row is deleted when used."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LoginFailure(Base):
+    """Failed logins per email address, kept whether or not the account exists so lockout reveals nothing."""
+
+    __tablename__ = "login_failures"
+
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Team(Base):

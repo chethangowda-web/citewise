@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
     jwt_ttl_minutes: int = 60 * 24 * 7
     auth_rate_limit_per_minute: int = 10  # login/register attempts per client address; 0 disables
+    lockout_attempts: int = 5  # wrong passwords for one email before it is locked; 0 disables
+    lockout_minutes: int = 15
+    reset_ttl_minutes: int = 30  # how long a password-reset link works (it also works only once)
+    public_url: str = "http://localhost:8080"  # used to build links in emails
+    cookie_secure: str = "auto"  # session cookie Secure flag: auto | true | false. Set true behind HTTPS.
+    smtp_host: str = ""  # empty = password-reset emails are written to the log instead of sent
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    smtp_from: str = "Citewise <no-reply@localhost>"
     admin_api_key: str = ""  # admin endpoints are disabled unless this is set
     rate_limit_per_minute: int = 20  # per client, /api/chat and uploads; 0 disables
     # Evaluation only: turns off screening, relevance floor and citation enforcement so the

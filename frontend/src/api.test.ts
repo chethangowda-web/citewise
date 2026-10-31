@@ -72,27 +72,30 @@ describe('chatStream', () => {
     await expect(chatStream('q', null)).rejects.toThrow(/closed before an answer/)
   })
 
-  it('sends the session id and the bearer token', async () => {
-    localStorage.setItem('policyDeskToken', 'tok')
+  it('sends the session id and the CSRF header, and never an Authorization header', async () => {
     const fetchMock = vi.fn().mockResolvedValue(respond([sse('done', DONE)]))
     vi.stubGlobal('fetch', fetchMock)
     await chatStream('hello', 'sess1')
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/chat/stream')
-    expect(init.headers.Authorization).toBe('Bearer tok')
+    expect(init.headers['X-Requested-With']).toBe('citewise')
+    expect(init.headers.Authorization).toBeUndefined()
     expect(JSON.parse(init.body)).toEqual({ question: 'hello', session_id: 'sess1' })
   })
 
-  it('clears the token and signals sign-in only for a Bearer-challenged 401', async () => {
-    localStorage.setItem('policyDeskToken', 'tok')
+  it('signals sign-in only for a Bearer-challenged 401', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond([], 401, { 'WWW-Authenticate': 'Bearer' })))
     await expect(chatStream('q', null)).rejects.toThrow('nope')
-    expect(localStorage.getItem('policyDeskToken')).toBeNull()
     expect(window.dispatchEvent).toHaveBeenCalledTimes(1)
 
-    localStorage.setItem('policyDeskToken', 'tok')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond([], 401))) // e.g. a wrong API key
     await expect(chatStream('q', null)).rejects.toThrow('nope')
-    expect(localStorage.getItem('policyDeskToken')).toBe('tok')
+    expect(window.dispatchEvent).toHaveBeenCalledTimes(1) // unchanged
+  })
+
+  it('keeps no session token in localStorage', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond([sse('done', DONE)])))
+    await chatStream('q', null)
+    expect(localStorage.getItem('policyDeskToken')).toBeNull()
   })
 })
