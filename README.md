@@ -310,7 +310,7 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 257 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 263 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 22 unit tests (including the SSE parser and upload polling)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
@@ -355,6 +355,8 @@ frontend/nginx/   default.conf, security-headers.conf
 ```
 
 ## Design decisions
+
+- **Schema changes are Alembic migrations.** The backend runs `alembic upgrade head` at startup, under a database lock so servers that start together take turns. An empty database is built from the migrations; a database from before migrations existed is brought up to the baseline, stamped `0001`, and left with its data untouched. To change the schema, edit `app/models.py` and run `cd backend && alembic revision --autogenerate -m "what changed"` (point it at a scratch database with `-x url=postgresql+psycopg://...`), read the generated file, and commit it. A test fails whenever the models and the migrations disagree. Downgrading the baseline drops every table, so restore from a backup instead.
 
 - **Hybrid retrieval with RRF** so exact terms ("401k", "VPN") and paraphrases both land; the similarity score from the vector side drives the refusal floor.
 - **Refuse by default.** A wrong confident answer about policy is worse than "not on file", so citation enforcement is mandatory, not best-effort.

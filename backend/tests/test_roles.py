@@ -177,14 +177,16 @@ def test_startup_promotes_the_oldest_account_when_nobody_is_admin(client, db):
     from app.models import User
 
     db.add_all([User(email="old@example.com", password_hash="x", role="editor"), User(email="new@example.com", password_hash="x", role="editor")])
+    db.execute(text("drop table alembic_version"))  # what a database from before migrations looks like
     db.commit()
-    init_db()
+    init_db()  # adopts it: brings it up to date, promotes the oldest account, stamps it
     db.expire_all()
     roles = {u.email: u.role for u in db.query(User)}
     assert roles == {"old@example.com": "admin", "new@example.com": "editor"}
     db.rollback()  # release this session's read lock, or the next ALTER TABLE would wait on it forever
     init_db()  # idempotent: running it again changes nothing
     assert db.scalar(text("select count(*) from users where role = 'admin'")) == 1
+    assert db.scalar(text("select version_num from alembic_version")) == "0001"  # and it is now under migrations
 
 
 def test_admin_key_alone_can_delete_a_document_when_auth_is_on(client, org):

@@ -14,3 +14,4 @@ pytest>=8.0
 httpx>=0.27
 PyJWT>=2.8
 defusedxml>=0.7
+alembic>=1.13

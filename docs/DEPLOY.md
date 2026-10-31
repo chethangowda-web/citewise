@@ -46,6 +46,13 @@ Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a P
 - Set the same environment variables as above on the backend, including `DATABASE_URL`, and `TRUSTED_PROXY=true` only if the platform's edge overwrites `X-Forwarded-For`.
 - Expose only the frontend service publicly.
 
+## Database migrations
+
+The backend applies pending migrations when it starts, so deploying a new version needs no manual database step. Two things to know:
+
+- Take a backup first (see the backup notes in this guide); a migration that fails halfway on a big table is the one case where you will want it.
+- Run only one version of the app against a database at a time during an upgrade; the startup lock makes simultaneous starts safe, but an old server running against a new schema is not.
+
 ## Hardening checklist
 
 - [ ] `POSTGRES_PASSWORD` changed from the default `rag`

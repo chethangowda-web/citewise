@@ -12,6 +12,7 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install --retries 10 --timeou
 RUN python -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder('Xenova/ms-marco-MiniLM-L-6-v2')"
 
 COPY app ./app
+COPY migrations ./migrations
 COPY eval ./eval
 
 RUN useradd -m appuser && chown -R appuser /opt/fastembed
