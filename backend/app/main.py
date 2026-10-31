@@ -12,6 +12,7 @@ from app.api.routes import router
 from app.config import get_settings
 from app.db import init_db
 from app.observability import RequestContextMiddleware, setup_logging
+from app.rag.jobs import recover_interrupted_jobs
 from app.retention import start_retention_thread
 
 setup_logging()
@@ -20,6 +21,7 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    recover_interrupted_jobs()  # a restart loses the in-process queue
     stop = start_retention_thread()  # None unless RETENTION_DAYS or AUDIT_RETENTION_DAYS is set
     yield
     if stop:

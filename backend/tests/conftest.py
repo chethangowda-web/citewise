@@ -119,7 +119,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _clean_state(client):
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE chunks, documents, audit_logs, chat_messages, chat_sessions, team_members, teams, password_resets, login_failures, users RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE chunks, documents, audit_logs, chat_messages, chat_sessions, team_members, teams, password_resets, login_failures, escalations, ingest_jobs, users RESTART IDENTITY CASCADE"))
     limiter.reset()
     client.cookies.clear()  # a cookie session from one test must not authenticate the next
     yield

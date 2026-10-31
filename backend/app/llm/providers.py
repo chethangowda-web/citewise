@@ -1,4 +1,6 @@
 import logging
+import re
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Protocol
@@ -14,6 +16,9 @@ from app.config import get_settings
 log = logging.getLogger("rag.llm")
 
 _retry = retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=4), reraise=True)
+
+
+_RETRY_IN = re.compile(r"retry in ([\d.]+)\s*s", re.IGNORECASE)
 
 
 class LLMUnavailable(Exception):
@@ -44,20 +49,44 @@ class GeminiClient:
         self._s = s
         self._client = genai.Client(api_key=s.gemini_api_key)
 
-    @_retry
     def embed(self, texts: list[str], is_query: bool = False) -> list[list[float]]:
         task = "RETRIEVAL_QUERY" if is_query else "RETRIEVAL_DOCUMENT"
         out: list[list[float]] = []
         for i in range(0, len(texts), 100):  # API batch limit
-            res = self._client.models.embed_content(
-                model=self._s.embedding_model,
-                contents=texts[i : i + 100],
-                config=types.EmbedContentConfig(
-                    task_type=task, output_dimensionality=self._s.embedding_dim
-                ),
-            )
+            res = self._embed_batch(texts[i : i + 100], task)
             out.extend(_normalize(e.values) for e in res.embeddings)
         return out
+
+    def _embed_batch(self, batch: list[str], task: str):
+        """One embedding request. A rate-limit answer (the free tier counts every passage as a request, so a long
+        document exceeds the per-minute quota) is waited out for as long as the API says; other failures get a
+        couple of quick retries."""
+        patience = max(self._s.embed_rate_limit_retries, 0)
+        quick = 0
+        waits = 0
+        while True:
+            try:
+                return self._client.models.embed_content(
+                    model=self._s.embedding_model,
+                    contents=batch,
+                    config=types.EmbedContentConfig(task_type=task, output_dimensionality=self._s.embedding_dim),
+                )
+            except errors.ClientError as e:
+                delay = _rate_limit_delay(e)
+                if delay is None:
+                    raise
+                if waits >= patience:
+                    raise LLMUnavailable(
+                        "The embedding service is rate-limited right now. Please try again in a few minutes."
+                    ) from e
+                waits += 1
+                log.warning("embed_rate_limited", extra={"wait_s": round(delay, 1), "attempt": waits})
+                time.sleep(delay)
+            except errors.ServerError:
+                quick += 1
+                if quick >= 3:
+                    raise
+                time.sleep(min(2**quick, 4))
 
     def generate(self, system: str, prompt: str) -> Generation:
         """Try the primary model, then the fallback if it is overloaded or unavailable."""
@@ -166,6 +195,14 @@ class GroqClient:
             getattr(usage, "prompt_tokens", 0) or 0,
             getattr(usage, "completion_tokens", 0) or 0,
         )
+
+
+def _rate_limit_delay(e: "errors.ClientError") -> float | None:
+    """Seconds to wait if this is a 429, else None. Uses the API's own 'retry in 31s' hint, with a safe floor and cap."""
+    if getattr(e, "code", None) != 429:
+        return None
+    m = _RETRY_IN.search(str(e))
+    return min(max(float(m.group(1)) + 1.0, 2.0), 65.0) if m else 30.0
 
 
 def _normalize(vec: list[float]) -> list[float]:

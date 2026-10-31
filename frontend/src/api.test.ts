@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { chatStream } from './api'
+import { BACKGROUND_BYTES, chatStream, uploadAndWait } from './api'
 
 const enc = new TextEncoder()
 
@@ -97,5 +97,56 @@ describe('chatStream', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(respond([sse('done', DONE)])))
     await chatStream('q', null)
     expect(localStorage.getItem('policyDeskToken')).toBeNull()
+  })
+})
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+const RESULT = { id: 7, title: 'Big Policy', chunks: 300, quarantined: 0, version: 1 }
+const bigFile = () => new File([new Uint8Array(BACKGROUND_BYTES + 1)], 'big_policy.pdf')
+
+describe('uploadAndWait', () => {
+  it('sends a small file straight through, with no background job', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json(RESULT))
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await uploadAndWait(new File(['hello'], 'small.md'))
+    expect(r.title).toBe('Big Policy')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((fetchMock.mock.calls[0][1].body as FormData).get('background')).toBeNull()
+  })
+
+  it('files a big one in the background and polls until it is done, reporting progress', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({ job_id: 'abc', status: 'queued' }, 202))
+      .mockResolvedValueOnce(json({ job_id: 'abc', status: 'queued', filename: 'big_policy.pdf', error: '', result: null }))
+      .mockResolvedValueOnce(json({ job_id: 'abc', status: 'running', filename: 'big_policy.pdf', error: '', result: null }))
+      .mockResolvedValueOnce(json({ job_id: 'abc', status: 'done', filename: 'big_policy.pdf', error: '', result: RESULT }))
+    vi.stubGlobal('fetch', fetchMock)
+    const seen: string[] = []
+    const r = await uploadAndWait(bigFile(), { scope: 'private' }, '2026-01-01', (p) => seen.push(p), 0)
+    expect(r).toEqual(RESULT)
+    expect(seen).toEqual(['queued', 'running'])
+    const form = fetchMock.mock.calls[0][1].body as FormData
+    expect(form.get('background')).toBe('true')
+    expect(form.get('effective_date')).toBe('2026-01-01')
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/documents/jobs/abc')
+  })
+
+  it('shows the reason when the job fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(json({ job_id: 'abc', status: 'queued' }, 202))
+        .mockResolvedValueOnce(json({ job_id: 'abc', status: 'failed', filename: 'x', error: 'This is not a valid .docx file.', result: null })),
+    )
+    await expect(uploadAndWait(bigFile(), undefined, undefined, undefined, 0)).rejects.toThrow('This is not a valid .docx file.')
+  })
+
+  it('reports a rejected upload straight away, without polling', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ detail: 'File too large (max 5 MB)' }, 413))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(uploadAndWait(bigFile(), undefined, undefined, undefined, 0)).rejects.toThrow('File too large')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

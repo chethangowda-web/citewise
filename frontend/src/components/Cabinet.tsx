@@ -5,6 +5,7 @@ interface Props {
   docs: DocInfo[]
   loading: boolean
   uploading: boolean
+  uploadStatus?: string // progress of a big upload filed in the background
   error: string
   notice: string
   onUpload: (files: File[], target?: UploadTarget, effectiveDate?: string) => void
@@ -13,7 +14,7 @@ interface Props {
   children?: ReactNode // rendered above the archive (the conversations list)
 }
 
-export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onDelete, user, children }: Props) {
+export function Cabinet({ docs, loading, uploading, uploadStatus, error, notice, onUpload, onDelete, user, children }: Props) {
   const input = useRef<HTMLInputElement>(null)
   const [who, setWho] = useState('private') // private | shared | team:<id>
   const canUpload = !user || user.role !== 'viewer'
@@ -103,7 +104,9 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
         <button className="drop-btn" onClick={() => input.current?.click()} disabled={uploading}>
           {uploading ? 'Filing…' : 'File a document'}
         </button>
-        <small>Drop .pdf .docx .html .md .txt here · 5 MB max</small>
+        <small role={uploadStatus ? 'status' : undefined} data-testid="upload-status">
+          {uploadStatus || 'Drop .pdf .docx .html .md .txt here · 5 MB max'}
+        </small>
         <input
           ref={input}
           type="file"

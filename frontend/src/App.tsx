@@ -10,7 +10,7 @@ import {
   listDocuments,
   listSessions,
   me,
-  uploadDocument,
+  uploadAndWait,
 } from './api'
 import { AccountPanel } from './components/AccountPanel'
 import { AdminView } from './components/AdminView'
@@ -43,6 +43,7 @@ export default function App() {
   const [docs, setDocs] = useState<DocInfo[]>([])
   const [docsLoading, setDocsLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState('')
   const [docError, setDocError] = useState('')
   const [docNotice, setDocNotice] = useState('')
   const [online, setOnline] = useState<boolean | null>(null)
@@ -176,7 +177,10 @@ export default function App() {
     const failures: string[] = []
     for (const f of files) {
       try {
-        const r = await uploadDocument(f, target, effectiveDate)
+        setUploadStatus(files.length > 1 ? `Filing ${f.name}…` : '')
+        const r = await uploadAndWait(f, target, effectiveDate, (p) =>
+          setUploadStatus(p === 'queued' ? `${f.name}: waiting its turn…` : `${f.name}: reading and indexing…`),
+        )
         if (r.quarantined) {
           setDocNotice(
             `${f.name}: ${r.quarantined} of ${r.chunks} passages look like prompt injection and were quarantined. They will not be used for answers.`,
@@ -192,6 +196,7 @@ export default function App() {
     }
     await refreshDocs() // a successful refresh clears the error line, so show the failures after it
     if (failures.length) setDocError(failures.join(' · '))
+    setUploadStatus('')
     setUploading(false)
   }
 
@@ -318,7 +323,7 @@ export default function App() {
       </header>
       {accountOpen && user && <AccountPanel email={user.email} onClose={() => setAccountOpen(false)} onSignedOut={signOut} />}
 
-      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} user={user}>
+      <Cabinet docs={docs} loading={docsLoading} uploading={uploading} uploadStatus={uploadStatus} error={docError} notice={docNotice} onUpload={upload} onDelete={remove} user={user}>
         <History sessions={sessions} activeId={sessionId} busy={busy} onNew={newChat} onOpen={openSession} onDelete={removeSession} />
       </Cabinet>
 

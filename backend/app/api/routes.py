@@ -4,8 +4,8 @@ import secrets
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
@@ -14,10 +14,11 @@ from app.auth import get_current_user, optional_user, require_role
 from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.llm.providers import LLMUnavailable
-from app.models import ChatMessage, ChatSession, Document, Team, TeamMember, User
+from app.models import ChatMessage, ChatSession, Document, IngestJob, Team, TeamMember, User
 from app.observability import rate_limit
 from app.rag.extract import SUPPORTED_EXTENSIONS
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
+from app.rag.jobs import doc_summary, prune_jobs, run_ingest_job
 from app.rag.pipeline import ChatResult, answer_question, run_pipeline
 from app.rag.retriever import document_updated, visible_to
 from app.usage import enforce_budget, my_usage
@@ -256,11 +257,16 @@ def upload_document(
     scope: str = Form("private"),
     team_id: int | None = Form(None),
     effective_date: str | None = Form(None),
+    background: bool = Form(False),
+    tasks: BackgroundTasks = None,  # type: ignore[assignment]  (injected by FastAPI)
     db: Session = Depends(get_db),
     user: User | None = Depends(require_role("editor")),
 ):
     """Who may see the upload: `private` (only the uploader), `team` (members of team_id) or `shared`
-    (everyone; admins only). With auth disabled everything is shared, as before accounts existed."""
+    (everyone; admins only). With auth disabled everything is shared, as before accounts existed.
+
+    With `background=true` the file is checked and accepted at once (202 and a job id) and filed afterwards;
+    poll GET /documents/jobs/{id} for the outcome."""
     owner_id: int | None = _uid(user)
     target_team: int | None = None
     if user is not None:
@@ -287,15 +293,31 @@ def upload_document(
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large (max 5 MB)")
+    if background:
+        prune_jobs(db)
+        job = IngestJob(id=uuid.uuid4().hex, user_id=_uid(user), filename=name[:255])
+        db.add(job)
+        db.commit()
+        tasks.add_task(run_ingest_job, job.id, name, data, owner_id, target_team, effective)
+        return JSONResponse(status_code=202, content={"job_id": job.id, "status": "queued"})
     try:
         doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data), owner_id, target_team, effective)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    held = sum(c.quarantined for c in doc.chunks)
+    except LLMUnavailable as e:
+        log.warning("embedding_unavailable", extra={"error": str(e)[:300]})
+        raise HTTPException(503, str(e))
+    return doc_summary(doc)
+
+
+@router.get("/documents/jobs/{job_id}", dependencies=[Depends(require_api_key)])
+def upload_status(job_id: str, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    job = db.get(IngestJob, job_id)
+    if job is None or job.user_id != _uid(user):  # someone else's job looks missing
+        raise HTTPException(404, "Upload not found")
     return {
-        "id": doc.id, "title": doc.title, "chunks": len(doc.chunks), "quarantined": held,
-        "private": doc.owner_id is not None or doc.team_id is not None, "scope": doc_scope(doc),
-        "version": doc.version, "unchanged": bool(getattr(doc, "unchanged", False)),
+        "job_id": job.id, "status": job.status, "filename": job.filename, "error": job.error,
+        "result": job.result, "created_at": job.created_at.isoformat(),
     }
 
 

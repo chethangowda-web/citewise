@@ -16,6 +16,7 @@ import type {
   SessionInfo,
   Role,
   Stage,
+  UploadJob,
   UploadResult,
   UploadTarget,
 } from './types'
@@ -187,15 +188,44 @@ export const deleteSession = (id: string) =>
 
 export const listDocuments = () => fetch('/api/documents', { headers: headers() }).then((r) => parse<DocInfo[]>(r))
 
-export const uploadDocument = (file: File, target?: UploadTarget, effectiveDate?: string) => {
+export const uploadDocument = (file: File, target?: UploadTarget, effectiveDate?: string, background = false) => {
   const form = new FormData()
   form.append('file', file)
   if (effectiveDate) form.append('effective_date', effectiveDate)
+  if (background) form.append('background', 'true')
   if (target) {
     form.append('scope', target.scope)
     if (target.scope === 'team' && target.teamId != null) form.append('team_id', String(target.teamId))
   }
-  return fetch('/api/documents', { method: 'POST', headers: headers(), body: form }).then((r) => parse<UploadResult>(r))
+  return fetch('/api/documents', { method: 'POST', headers: headers(), body: form }).then((r) => parse<UploadResult & { job_id: string }>(r))
+}
+
+/** Files bigger than this are filed in the background: embedding every passage can take a while. */
+export const BACKGROUND_BYTES = 200_000
+
+export type UploadProgress = 'queued' | 'running'
+
+/**
+ * Upload one file and resolve with the result, whichever way it was filed. Small files go straight through.
+* Large ones are accepted at once as a job that is polled until it is done, so no request has to stay open.
+ */
+export async function uploadAndWait(
+  file: File,
+  target?: UploadTarget,
+  effectiveDate?: string,
+  onProgress?: (p: UploadProgress) => void,
+  pollMs = 1000,
+): Promise<UploadResult> {
+  if (file.size <= BACKGROUND_BYTES) return uploadDocument(file, target, effectiveDate)
+  const { job_id } = await uploadDocument(file, target, effectiveDate, true)
+  for (let waited = 0; waited < 15 * 60_000; waited += pollMs) {
+    const job = await fetch(`/api/documents/jobs/${job_id}`, { headers: headers() }).then((r) => parse<UploadJob>(r))
+    if (job.status === 'done') return job.result as UploadResult
+    if (job.status === 'failed') throw new Error(job.error || 'The document could not be filed')
+    onProgress?.(job.status)
+    await new Promise((r) => setTimeout(r, pollMs))
+  }
+  throw new Error('Filing is taking too long. Check the archive in a minute.')
 }
 
 export const deleteDocument = (id: number) =>

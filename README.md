@@ -87,6 +87,7 @@ Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI,
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
 | `STALE_AFTER_DAYS` | `365` | An answer citing a document older than this carries an outdated-source warning (still answered, not refused); `0` turns it off |
 | `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
+| `INGEST_CONCURRENCY` / `EMBED_RATE_LIMIT_RETRIES` | `2` / `8` | Big uploads filed at the same time, and how many times to wait out an embedding rate limit (as long as the API asks) before failing with a plain message |
 | `USER_DAILY_TOKEN_LIMIT` / `GLOBAL_DAILY_TOKEN_LIMIT` | `0` / `0` | Token budget over the last 24 hours (`0` = no limit): per person (admins exempt), and across everyone (admins included, so one runaway client cannot empty your model quota). Over the limit a question is refused with a 429 before any model call, and refusals and blocks cost nothing |
 | `RETENTION_DAYS` / `AUDIT_RETENTION_DAYS` | `0` / `0` | Delete conversations untouched for this many days, and audit-ledger rows older than this (`0` keeps everything). A background job applies them every `RETENTION_INTERVAL_HOURS` (6) |
 | `KEEP_AUDIT_ON_ACCOUNT_DELETE` | `false` | When someone deletes their account, also delete their audit rows (`false`) or keep them unlinked from the person (`true`) |
@@ -116,6 +117,8 @@ Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI,
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
 | `GET` | `/api/admin/documents` | Every document and version, who can see it, and its status (`current` or `superseded`) |
 | `POST` | `/api/admin/documents/{id}/restore` | Make an archived version current again; the one it replaces is archived |
+| `POST` | `/api/documents` with `background=true` | Check and accept the file at once (`202` and a job id), file it afterwards. The web app does this for files over 200 KB |
+| `GET` | `/api/documents/jobs/{id}` | Status of a background upload: `queued`, `running`, `done` (with the result) or `failed` (with the reason). Only the uploader can see it |
 | `GET` | `/api/usage/me` | Your tokens used in the last 24 hours against your allowance |
 | `GET` | `/api/admin/usage` | Tokens and estimated cost per day and per person (`days`, default 30), with the configured limits |
 | `POST` | `/api/messages/{id}/feedback` | `{rating: up\|down\|none, reason?}` on your own answer; reasons are stripped of personal data |
@@ -158,6 +161,7 @@ Interactive docs are at `/docs` on the backend.
 - **Erasure is deliberate but not total.** Deleting an account removes its conversations, private documents, feedback and (by default) audit rows; questions it sent to staff stay for the team with the person unlinked; team documents it uploaded stay with the team; backups and logs outside the database are not touched.
 - **Hidden text is dropped, not detected.** HTML and Word files can carry text a reader never sees (`display:none`, `hidden`, comments, Word's hidden-text formatting); the extractors leave it out entirely, so it cannot reach the index or the model. Text that is merely hard to see (white on white, tiny, off-screen) is still extracted, and the quarantine scan is the only defence for that. Scanned PDFs without a text layer produce no text, and macros, embedded objects, headers, footers and comments in Word files are ignored.
 - **Spending limits are a guard, not a meter.** Usage is summed from the audit ledger over a sliding 24 hours, so there is no counter to reset, but concurrent requests can overshoot a limit slightly, and the cost shown is an estimate from the configured list prices. Retention that deletes audit rows also removes that history from the report.
+- **Background uploads live in the API process.** A restart loses the queue; jobs that were queued or running are marked failed at startup so the page never waits forever, and the person uploads again. Several servers behind a load balancer would need a real job queue. On Gemini's free tier, filing is limited by 100 embedding requests per minute (one per passage), so a 300-passage document takes a few minutes; a paid key removes that.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -306,14 +310,15 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 230 tests: unit + real-Postgres integration, fake LLM
-cd frontend && npm test                             # 18 unit tests (including the SSE parser)
+cd backend  && python -m pytest -q                  # 257 tests: unit + real-Postgres integration, fake LLM
+cd frontend && npm test                             # 22 unit tests (including the SSE parser and upload polling)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test filetypes  # +1: real .docx and .html files with hidden planted text
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test usage  # +1: needs USER_DAILY_TOKEN_LIMIT=500 on the server
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test background  # +1: a 250 KB document filed in the background (takes ~4 minutes on the free tier)
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test versions  # +1 versioning, freshness and restore test (real model)
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test security  # +4: cookie, reset link, sign out everywhere, change password
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test feedback  # +1: feedback, ask a person, staff inbox, CSV, data download, account erasure

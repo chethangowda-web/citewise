@@ -46,6 +46,14 @@ export interface UploadResult {
   unchanged?: boolean
 }
 
+export interface UploadJob {
+  job_id: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  filename: string
+  error: string
+  result: UploadResult | null
+}
+
 export type Turn = {
   id: number
   question: string
