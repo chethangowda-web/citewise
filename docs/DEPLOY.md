@@ -2,6 +2,16 @@
 
 > **Status:** these steps use only what is verified locally (the production Compose file, the nginx build, health checks). The app has **not** been deployed to a cloud host yet, so treat the host-specific parts as a starting point and expect to adjust.
 
+## Before you deploy: five minutes that matter
+
+1. **Start from the production template.** `cp .env.production.example .env` (on the server, or paste it into your host's variable settings) and fill in every blank. Generate secrets with `openssl rand -hex 32`.
+2. **Run the preflight:** `python scripts/preflight.py`. It prints one line per finding and exits non-zero on anything unsafe: accounts off, a weak or missing `JWT_SECRET`, the default database password, an insecure cookie, a `localhost` public address, no named administrator, a secret about to be committed. Warnings (open sign-up, no daily token limit, no SMTP) do not block you, but read them.
+3. **Set `ADMIN_EMAIL` to your own address.** With sign-up open, whoever registers first on a fresh server would otherwise become the admin. With `ADMIN_EMAIL` set, only an account registered with exactly that address is made admin. Register it first thing, then (if you want) set `ALLOW_SIGNUP=false` once your people have accounts.
+4. **Set daily token limits** (`GLOBAL_DAILY_TOKEN_LIMIT` below your provider's daily quota, `USER_DAILY_TOKEN_LIMIT` per person). A public demo on a free tier will otherwise be emptied by the first busy afternoon.
+5. **Configure SMTP**, or accept that nobody receives password-reset emails and the link only appears in the server log.
+
+After the first start: sign in as the admin, upload your policies, ask a question, and run `scripts/backup.sh` once so you know it works on the server.
+
 ## What gets deployed
 
 Three containers from `docker-compose.yml`: `db` (Postgres + pgvector), `backend` (FastAPI) and `frontend` (nginx serving the React build and proxying `/api`). In the production file **only nginx is published**; the database and backend are reachable only on the internal network.

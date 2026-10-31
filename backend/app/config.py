@@ -42,7 +42,11 @@ class Settings(BaseSettings):
     # private to their owner, and chat history is per user. When disabled the app is single-user as before.
     auth_enabled: bool = False
     allow_signup: bool = True
-    default_role: str = "editor"  # role of new accounts (the very first account is always admin): editor | viewer
+    default_role: str = "editor"  # role of new accounts (see ADMIN_EMAIL for who becomes admin): editor | viewer
+    # Who administers a new installation. Empty: the very first account becomes admin. Set it on any public
+    # server: then only an account registered with exactly this address is made admin, so a stranger who
+    # signs up before you cannot take the system over.
+    admin_email: str = ""
     jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
     jwt_ttl_minutes: int = 60 * 24 * 7
     # Spending guards (tokens in the last 24 hours, read from the audit ledger; 0 = no limit).

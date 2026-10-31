@@ -195,3 +195,21 @@ def test_admin_key_alone_can_delete_a_document_when_auth_is_on(client, org):
     assert client.delete(f"/api/documents/{doc}").status_code == 401  # no token, no key
     assert client.delete(f"/api/documents/{doc}", headers={"X-Admin-Key": "wrong"}).status_code == 401
     assert client.delete(f"/api/documents/{doc}", headers={"X-Admin-Key": "test-admin"}).status_code == 204
+
+
+def test_a_named_admin_email_stops_a_stranger_who_registers_first(client, auth_on, settings, monkeypatch):
+    monkeypatch.setattr(settings, "admin_email", "Owner@Example.com")
+    stranger = signup(client, "stranger@example.com")  # first to register, but not the named administrator
+    assert client.get("/api/auth/me", headers=stranger).json()["role"] == "editor"
+    assert client.get("/api/admin/users", headers=stranger).status_code == 403
+    owner = signup(client, "owner@example.com")  # the address matches, whatever its capitalisation
+    assert client.get("/api/auth/me", headers=owner).json()["role"] == "admin"
+    assert client.get("/api/admin/users", headers=owner).status_code == 200
+    later = signup(client, "later@example.com")
+    assert client.get("/api/auth/me", headers=later).json()["role"] == "editor"
+
+
+def test_without_a_named_admin_the_first_account_still_administers(client, auth_on, settings, monkeypatch):
+    monkeypatch.setattr(settings, "admin_email", "")
+    assert client.get("/api/auth/me", headers=signup(client, "first@example.com")).json()["role"] == "admin"
+    assert client.get("/api/auth/me", headers=signup(client, "second@example.com")).json()["role"] == "editor"

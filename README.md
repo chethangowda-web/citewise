@@ -95,6 +95,7 @@ Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI,
 | `RESET_TTL_MINUTES` / `PUBLIC_URL` | `30` / `http://localhost:8080` | How long a password-reset link lives (it also works only once), and the address used to build it |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | empty | Where reset emails go. **With no `SMTP_HOST` the message, including its link, is written to the backend log**, which is fine locally and not for production |
 | `COOKIE_SECURE` | `auto` | Secure flag of the session cookie: `auto`, `true` or `false`. **Set `true` when serving over HTTPS** |
+| `ADMIN_EMAIL` | empty | The administrator. Empty: the first account to register becomes admin. **Set it on any public server**, so a stranger who signs up first cannot take over; then only an account registered with exactly this address is made admin |
 | `DEFAULT_ROLE` | `editor` | Role of new accounts: `editor` (can upload) or `viewer` (read and ask only). The first account is always admin; on a database that predates roles the oldest account is promoted at startup |
 | `ALLOW_SIGNUP` / `JWT_TTL_MINUTES` / `AUTH_RATE_LIMIT_PER_MINUTE` | `true` / `10080` / `10` | Open or close registration, token lifetime, login attempts per address per minute |
 | `ADMIN_API_KEY` | empty | Enables `/api/admin/*`; with no key those routes return 404 |
@@ -310,7 +311,7 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 263 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 298 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 22 unit tests (including the SSE parser and upload polling)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server, accounts off); 13 more are skipped unless E2E_AUTH=1, see below
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true

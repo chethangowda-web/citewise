@@ -166,9 +166,13 @@ def register_user(db: Session, email: str, password: str) -> User:
     validate_password(password)
     if db.scalar(select(User).where(User.email == email)):
         raise ValueError("An account with this email already exists")
-    first = db.scalar(select(func.count()).select_from(User)) == 0  # whoever sets the system up administers it
-    default = get_settings().default_role if get_settings().default_role in ROLE_RANK else "editor"
-    user = User(email=email, password_hash=hash_password(password), role="admin" if first else default)
+    s = get_settings()
+    if s.admin_email.strip():  # a named administrator: nobody else can claim the role by being first
+        admin = email == s.admin_email.strip().lower()
+    else:  # otherwise whoever sets the system up administers it
+        admin = db.scalar(select(func.count()).select_from(User)) == 0
+    default = s.default_role if s.default_role in ROLE_RANK else "editor"
+    user = User(email=email, password_hash=hash_password(password), role="admin" if admin else default)
     db.add(user)
     db.commit()
     return user
