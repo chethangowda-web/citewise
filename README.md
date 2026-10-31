@@ -312,7 +312,7 @@ What it showed:
 ```bash
 cd backend  && python -m pytest -q                  # 263 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 22 unit tests (including the SSE parser and upload polling)
-cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
+cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server, accounts off); 13 more are skipped unless E2E_AUTH=1, see below
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model

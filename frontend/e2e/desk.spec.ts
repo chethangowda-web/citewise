@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 
 const ask = async (page: Page, q: string) => {
   await page.getByLabel('Your question').fill(q)
@@ -8,6 +8,19 @@ const sheet = (page: Page) => page.getByTestId('answer-sheet').last()
 const verdict = (page: Page) => page.getByTestId('verdict').last()
 // The archive is whatever is really in the database, so tests read the count instead of assuming it.
 const docCount = async (page: Page) => (await (await page.request.get('/api/documents')).json()).length as number
+
+/**
+ * Answer a document-list request with the real response, reshaped. If the page is torn down while a slow request is
+ * still being re-fetched (the test already has what it needs), there is nobody left to answer: not a failure.
+ */
+const reshape = async (r: Route, shape: (docs: any[]) => unknown) => {
+  try {
+    const docs = await (await r.fetch()).json()
+    await r.fulfill({ json: shape(docs) })
+  } catch (e) {
+    if (!/disposed|closed|Target page|has been/i.test(String(e))) throw e
+  }
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -93,9 +106,7 @@ test('upload flow files a document and refreshes the archive', async ({ page }) 
       uploaded = true
       return r.fulfill({ json: { id: 99, title: 'new', chunks: 2 } })
     }
-    const real = await r.fetch()
-    const docs = await real.json()
-    return r.fulfill({ json: uploaded ? [...docs, { id: 99, title: 'Mocked Upload', source: 'm.md', chunks: 2 }] : docs })
+    return reshape(r, (docs) => (uploaded ? [...docs, { id: 99, title: 'Mocked Upload', source: 'm.md', chunks: 2 }] : docs))
   })
   await page.getByTestId('file-input').setInputFiles({ name: 'm.md', mimeType: 'text/markdown', buffer: Buffer.from('# Hi\n\nHello') })
   await expect(page.locator('.folder')).toHaveCount(n + 1)
@@ -109,8 +120,7 @@ test('quarantined passages are announced and badged', async ({ page }) => {
       uploaded = true
       return r.fulfill({ json: { id: 98, title: 'Bonus', chunks: 3, quarantined: 1 } })
     }
-    const docs = await (await r.fetch()).json()
-    return r.fulfill({ json: uploaded ? [...docs, { id: 98, title: 'Bonus', source: 'bonus.md', chunks: 3, quarantined: 1 }] : docs })
+    return reshape(r, (docs) => (uploaded ? [...docs, { id: 98, title: 'Bonus', source: 'bonus.md', chunks: 3, quarantined: 1 }] : docs))
   })
   await page.getByTestId('file-input').setInputFiles({ name: 'bonus.md', mimeType: 'text/markdown', buffer: Buffer.from('# Bonus\n\nhello') })
   await expect(page.getByTestId('notice')).toContainText('1 of 3 passages look like prompt injection')
@@ -121,8 +131,7 @@ test('deleting a document asks first, then removes it', async ({ page }) => {
   const n = await docCount(page)
   let deleted = false
   await page.route('**/api/documents', async (r) => {
-    const docs = await (await r.fetch()).json()
-    return r.fulfill({ json: deleted ? docs.slice(1) : docs })
+    return reshape(r, (docs) => (deleted ? docs.slice(1) : docs))
   })
   await page.route('**/api/documents/*', (r) => {
     if (r.request().method() !== 'DELETE') return r.continue()
