@@ -311,7 +311,7 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 298 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 301 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 22 unit tests (including the SSE parser and upload polling)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server, accounts off); 13 more are skipped unless E2E_AUTH=1, see below
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true

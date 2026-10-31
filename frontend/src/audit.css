@@ -984,6 +984,7 @@
 }
 .bars {
   display: flex;
+  justify-content: flex-start;
   align-items: flex-end;
   gap: 4px;
   height: 7rem;
@@ -994,8 +995,9 @@
   border-radius: 3px;
 }
 .bar {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 6px;
+  max-width: 3.2rem; /* one day of data is a slim bar, not a block that fills the chart */
   height: 100%;
   display: flex;
   flex-direction: column;

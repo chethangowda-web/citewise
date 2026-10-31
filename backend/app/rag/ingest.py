@@ -82,11 +82,15 @@ def ingest_document(
 
 
 def main(folder: str) -> None:
+    root = Path(folder)
+    if not root.is_dir():
+        raise SystemExit(f"error: {folder} is not a folder (check the path; on Windows shells it may have been rewritten)")
+    files = [p for p in sorted(root.glob("*")) if p.suffix.lower() in SUPPORTED_EXTENSIONS]
+    if not files:
+        raise SystemExit(f"error: no documents found in {folder} (supported: {', '.join(SUPPORTED_EXTENSIONS)})")
     init_db()
     with SessionLocal() as db:
-        for path in sorted(Path(folder).glob("*")):
-            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                continue
+        for path in files:
             doc = ingest_document(db, path.name, title_from_filename(path.name), extract_text(path.name, path.read_bytes()))
             held = sum(c.quarantined for c in doc.chunks)
             print(f"ingested {path.name}: {len(doc.chunks)} chunks" + (f"  ({held} QUARANTINED: possible prompt injection)" if held else ""))
