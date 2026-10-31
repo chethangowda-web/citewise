@@ -5,6 +5,9 @@ import {
   adminDeleteTeam,
   adminDeleteUser,
   adminDocuments,
+  adminFeedback,
+  adminInbox,
+  adminResolve,
   adminRemoveMember,
   adminRestore,
   adminSetRole,
@@ -12,10 +15,10 @@ import {
   adminUsers,
   deleteDocument,
 } from '../api'
-import type { AdminDoc, AdminTeam, AdminUser, Role } from '../types'
+import type { AdminDoc, AdminTeam, AdminUser, Escalation, FeedbackReview, Role } from '../types'
 
 const ROLES: Role[] = ['admin', 'editor', 'viewer']
-const TABS = ['users', 'teams', 'documents'] as const
+const TABS = ['users', 'teams', 'documents', 'feedback', 'inbox'] as const
 type Tab = (typeof TABS)[number]
 
 export function AdminView({ meId }: { meId: number }) {
@@ -23,15 +26,20 @@ export function AdminView({ meId }: { meId: number }) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [teams, setTeams] = useState<AdminTeam[]>([])
   const [docs, setDocs] = useState<AdminDoc[]>([])
+  const [review, setReview] = useState<FeedbackReview>({ up: 0, down: 0, rows: [] })
+  const [inbox, setInbox] = useState<(Escalation & { user?: string | null })[]>([])
+  const [replies, setReplies] = useState<Record<number, string>>({})
   const [error, setError] = useState('')
   const [teamName, setTeamName] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const [u, t, d] = await Promise.all([adminUsers(), adminTeams(), adminDocuments()])
+      const [u, t, d, f, i] = await Promise.all([adminUsers(), adminTeams(), adminDocuments(), adminFeedback('down'), adminInbox('open')])
       setUsers(u)
       setTeams(t)
       setDocs(d)
+      setReview(f)
+      setInbox(i)
       setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the admin data')
@@ -63,7 +71,7 @@ export function AdminView({ meId }: { meId: number }) {
       <nav className="admin-tabs" aria-label="Admin sections">
         {TABS.map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} aria-pressed={tab === t} onClick={() => setTab(t)}>
-            {t}
+            {t === 'inbox' && inbox.length > 0 ? `inbox (${inbox.length})` : t}
           </button>
         ))}
       </nav>
@@ -234,6 +242,48 @@ export function AdminView({ meId }: { meId: number }) {
             ))}
           </tbody>
         </table>
+      )}
+      {tab === 'feedback' && (
+        <div data-testid="admin-feedback">
+          <p className="admin-lede">
+            👍 {review.up} helpful · 👎 {review.down} not helpful. Newest unhelpful answers first.
+          </p>
+          {review.rows.length === 0 && <p className="admin-empty">No unhelpful answers reported.</p>}
+          {review.rows.map((r) => (
+            <article key={r.message_id} className="review-card">
+              <p className="review-q">{r.question}</p>
+              <p>{r.answer}</p>
+              <p className="review-meta">
+                {r.reason ? <b>“{r.reason}”</b> : <em>no reason given</em>} · {r.outcome} · {r.sources.join(', ') || 'no sources'}
+                {r.user ? ` · ${r.user}` : ''}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {tab === 'inbox' && (
+        <div data-testid="admin-inbox">
+          {inbox.length === 0 && <p className="admin-empty">Nothing waiting for an answer.</p>}
+          {inbox.map((q) => (
+            <article key={q.id} className="review-card">
+              <p className="review-q">{q.question}</p>
+              {q.note && <p className="review-meta">Note: {q.note}</p>}
+              <p className="review-meta">{q.user ?? 'anonymous'} · {q.created_at.slice(0, 10)}</p>
+              <textarea
+                aria-label={`Your answer to question ${q.id}`}
+                rows={2}
+                maxLength={2000}
+                placeholder="Write the answer. It is emailed to them and shown under Account."
+                value={replies[q.id] ?? ''}
+                onChange={(e) => setReplies((r) => ({ ...r, [q.id]: e.target.value }))}
+              />
+              <button disabled={!(replies[q.id] ?? '').trim()} onClick={() => void act(() => adminResolve(q.id, replies[q.id].trim()))}>
+                Send answer
+              </button>
+            </article>
+          ))}
+        </div>
       )}
     </section>
   )

@@ -8,6 +8,8 @@ import type {
   AuthUser,
   ChatResponse,
   DocInfo,
+  Escalation,
+  FeedbackReview,
   SessionDetail,
   SessionInfo,
   Role,
@@ -122,6 +124,47 @@ const authPost = (path: string, body?: unknown) =>
     if (!r.ok) await fail(r)
   })
 
+export const sendFeedback = (messageId: number, rating: 'up' | 'down' | 'none', reason?: string) =>
+  fetch(`/api/messages/${messageId}/feedback`, {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ rating, reason }),
+  }).then(async (r) => {
+    if (!r.ok) await fail(r)
+  })
+
+export const askAPerson = (messageId: number, note: string) =>
+  fetch('/api/escalations', {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message_id: messageId, note }),
+  }).then((r) => parse<Escalation & { already_sent: boolean }>(r))
+
+export const myEscalations = () => fetch('/api/escalations', { headers: headers() }).then((r) => parse<Escalation[]>(r))
+
+/** Save a response as a file. Fetched with the page's credentials, so it works for a cookie session or an admin key. */
+async function download(url: string, init: RequestInit, fallbackName: string) {
+  const r = await fetch(url, init)
+  if (!r.ok) return fail(r)
+  const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName
+  const href = URL.createObjectURL(await r.blob())
+  const a = document.createElement('a')
+  a.href = href
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(href)
+}
+export const downloadMyData = () => download('/api/auth/me/export', { headers: headers() }, 'citewise-my-data.json')
+export const downloadAuditCsv = (key = '') => download('/api/admin/logs/export', { headers: adminHeaders(key) }, 'citewise-audit.csv')
+export const deleteAccount = (password: string) =>
+  fetch('/api/auth/me', {
+    method: 'DELETE',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ password }),
+  }).then(async (r) => {
+    if (!r.ok) await fail(r)
+  })
+
 export const logout = () => authPost('logout').catch(() => undefined)
 export const logoutAll = () => authPost('logout-all')
 export const changePassword = (current_password: string, new_password: string) =>
@@ -184,5 +227,8 @@ export const adminCreateTeam = (name: string) => adminJson('POST', '/teams', { n
 export const adminDeleteTeam = (id: number) => adminJson('DELETE', `/teams/${id}`).then(adminDone)
 export const adminAddMember = (team: number, user: number) => adminJson('PUT', `/teams/${team}/members/${user}`).then(adminDone)
 export const adminRemoveMember = (team: number, user: number) => adminJson('DELETE', `/teams/${team}/members/${user}`).then(adminDone)
+export const adminFeedback = (rating: 'down' | 'up' | 'all') => adminJson('GET', `/feedback?rating=${rating}`).then((r) => parse<FeedbackReview>(r))
+export const adminInbox = (status: 'open' | 'resolved') => adminJson('GET', `/escalations?status=${status}`).then((r) => parse<Escalation[]>(r))
+export const adminResolve = (id: number, reply: string) => adminJson('POST', `/escalations/${id}/resolve`, { reply }).then(adminDone)
 export const adminRestore = (id: number) => adminJson('POST', `/documents/${id}/restore`).then(adminDone)
 export const adminDocuments = () => adminJson('GET', '/documents').then((r) => parse<AdminDoc[]>(r))

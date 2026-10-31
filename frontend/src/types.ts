@@ -18,6 +18,8 @@ export interface ChatResponse {
   tokens?: number
   session_id?: string
   interpreted_as?: string // the standalone question searched for, when a follow-up was rewritten
+  message_id?: number // the answer, for feedback and escalation
+  feedback?: number | null // 1 helpful, -1 not
 }
 
 export interface DocInfo {
@@ -65,7 +67,36 @@ export interface SessionInfo {
 export interface SessionDetail {
   id: string
   title: string
-  messages: { id: number; role: 'user' | 'assistant'; content: string; meta: Partial<ChatResponse> }[]
+  messages: { id: number; role: 'user' | 'assistant'; content: string; meta: Partial<ChatResponse>; feedback?: number | null }[]
+}
+
+export interface Escalation {
+  id: number
+  question: string
+  note: string
+  status: 'open' | 'resolved'
+  reply: string
+  created_at: string
+  resolved_at: string | null
+  user?: string | null
+}
+
+export interface FeedbackRow {
+  message_id: number
+  rating: 'up' | 'down'
+  reason: string | null
+  question: string
+  answer: string
+  outcome: string | null
+  sources: string[]
+  created_at: string
+  user: string | null
+}
+
+export interface FeedbackReview {
+  up: number
+  down: number
+  rows: FeedbackRow[]
 }
 
 export type Role = 'admin' | 'editor' | 'viewer'

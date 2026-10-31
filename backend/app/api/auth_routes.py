@@ -1,8 +1,9 @@
+import json
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -26,7 +27,7 @@ from app.auth import (
 from app.config import get_settings
 from app.db import get_db
 from app.mailer import send_mail
-from app.models import User
+from app.models import AuditLog, Document, Escalation, User
 from app.observability import limiter
 
 router = APIRouter(prefix="/auth")
@@ -46,6 +47,10 @@ class EmailOnly(BaseModel):
 
 class ResetBody(BaseModel):
     token: str = Field(max_length=200)
+    password: str = Field(max_length=256)
+
+
+class DeleteAccount(BaseModel):
     password: str = Field(max_length=256)
 
 
@@ -172,6 +177,63 @@ def reset(body: ResetBody, db: Session = Depends(get_db)):
         reset_password(db, body.token, body.password)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@router.get("/me/export")
+def export_my_data(user: User | None = Depends(get_current_user)):
+    """Everything the system holds about you, as one JSON file."""
+    if user is None:
+        raise HTTPException(404, "Accounts are not enabled")
+    db = Session.object_session(user)
+    data = {
+        "account": {**user_info(user), "created_at": user.created_at.isoformat()},
+        "conversations": [
+            {
+                "id": c.id, "title": c.title, "created_at": c.created_at.isoformat(), "updated_at": c.updated_at.isoformat(),
+                "messages": [
+                    {
+                        "role": m.role, "content": m.content, "created_at": m.created_at.isoformat(), "meta": m.meta,
+                        "feedback": m.feedback, "feedback_reason": m.feedback_reason,
+                    }
+                    for m in c.messages
+                ],
+            }
+            for c in sorted(user.sessions, key=lambda c: c.created_at)
+        ],
+        "questions_sent_to_staff": [
+            {"question": e.question, "note": e.note, "status": e.status, "reply": e.reply, "created_at": e.created_at.isoformat()}
+            for e in db.scalars(select(Escalation).where(Escalation.user_id == user.id).order_by(Escalation.id))
+        ],
+        "documents_you_uploaded": [
+            {"title": d.title, "source": d.source, "version": d.version, "status": d.status, "filed": d.created_at.isoformat()}
+            for d in db.scalars(select(Document).where(Document.owner_id == user.id).order_by(Document.id))
+        ],
+    }
+    return Response(
+        content=json.dumps(data, indent=2), media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="citewise-my-data.json"'},
+    )
+
+
+@router.delete("/me", dependencies=[Depends(auth_rate_limit)])
+def delete_my_account(
+    body: DeleteAccount, response: Response, user: User | None = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Erase the account: its conversations, private documents, memberships and (by default) audit rows."""
+    if user is None:
+        raise HTTPException(404, "Accounts are not enabled")
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(403, "That password is not right")
+    if user.role == "admin" and (db.scalar(select(func.count()).select_from(User).where(User.role == "admin")) or 0) <= 1:
+        raise HTTPException(409, "You are the only admin. Make someone else an admin first.")
+    # a team's documents belong to the team, not to whoever uploaded them
+    db.execute(update(Document).where(Document.owner_id == user.id, Document.team_id.is_not(None)).values(owner_id=None))
+    if not get_settings().keep_audit_on_account_delete:
+        db.execute(delete(AuditLog).where(AuditLog.user_id == user.id))
+    db.delete(user)
+    db.commit()
+    response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
 
 

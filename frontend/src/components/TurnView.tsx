@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { buildTrace, maskPII, parseAnswer, type Verdict } from '../lib/text'
+import { AnswerActions } from './AnswerActions'
 import type { Turn } from '../types'
 
 const STAMP: Record<Verdict, string> = { answered: 'Verified', refused: 'Not on file', blocked: 'Blocked' }
@@ -92,6 +93,8 @@ export function TurnView({ turn, selected, onSelect }: { turn: Turn; selected: b
                 ),
               )}
             </p>
+
+            <AnswerActions res={res} />
 
             {res.sources.length > 0 && (
               <div className="slips">

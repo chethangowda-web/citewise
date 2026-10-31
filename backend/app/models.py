@@ -26,6 +26,9 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     teams: Mapped[list["Team"]] = relationship(secondary="team_members", back_populates="members")
+    sessions: Mapped[list["ChatSession"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, viewonly=False
+    )
 
 
 class PasswordReset(Base):
@@ -143,6 +146,22 @@ class ChatSession(Base):
     )
 
 
+class Escalation(Base):
+    """A question the assistant could not settle, sent to a person."""
+
+    __tablename__ = "escalations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
+    question: Mapped[str] = mapped_column(Text)  # as stored in the conversation: personal data already redacted
+    note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default="open", index=True)  # open | resolved
+    reply: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
@@ -151,5 +170,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(10))  # user | assistant
     content: Mapped[str] = mapped_column(Text)  # user text is stored after PII redaction
     meta: Mapped[dict] = mapped_column(JSONB, default=dict)  # assistant only: sources, flags, outcome, latency, tokens
+    feedback: Mapped[int | None] = mapped_column(Integer, nullable=True)  # assistant only: 1 = helpful, -1 = not
+    feedback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     session: Mapped[ChatSession] = relationship(back_populates="messages")

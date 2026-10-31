@@ -829,3 +829,119 @@
 .account-panel .notice {
   color: var(--ink);
 }
+
+/* ---------- feedback, escalation, review ---------- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.6rem 0 0.2rem;
+  font: 400 0.74rem var(--mono);
+  color: var(--ink-3);
+}
+.actions button,
+.reasons button,
+.ask-form button {
+  padding: 0.2rem 0.55rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  font: 500 0.72rem var(--mono);
+}
+.actions button.on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.actions-q {
+  margin-right: 0.2rem;
+}
+.ask-person {
+  margin-left: 0.4rem;
+  border-style: dashed !important;
+}
+.reasons,
+.ask-form {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.ask-form textarea,
+.review-card textarea {
+  flex: 1 1 14rem;
+  padding: 0.4rem 0.5rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 400 0.9rem var(--serif);
+  resize: vertical;
+}
+.actions-note {
+  color: var(--ok);
+}
+.review-card {
+  margin-bottom: 0.9rem;
+  padding: 0.7rem 1rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--stamp);
+  border-radius: 3px;
+}
+.review-card p {
+  margin: 0.2rem 0;
+}
+.review-q {
+  font-weight: 650;
+}
+.review-meta {
+  font: 400 0.72rem var(--mono);
+  color: var(--ink-3);
+}
+.review-card button {
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.8rem;
+  background: var(--ink);
+  border: 0;
+  border-radius: 3px;
+  color: var(--paper);
+}
+.review-card button:disabled {
+  opacity: 0.4;
+}
+.asked ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.asked li p {
+  margin: 0.2rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--hl);
+  font-size: 0.88rem;
+}
+.pill {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  border-radius: 99px;
+  font: 500 0.62rem var(--mono);
+  background: var(--rule);
+}
+.pill.resolved {
+  background: #cfe6d9;
+}
+.account-panel button.plain {
+  padding: 0.4rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  color: var(--ink);
+  font-weight: 500;
+}
+.account-panel {
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+}

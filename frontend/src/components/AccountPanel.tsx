@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { changePassword, logoutAll } from '../api'
+import { useEffect, useState } from 'react'
+import { changePassword, deleteAccount, downloadMyData, logoutAll, myEscalations } from '../api'
+import type { Escalation } from '../types'
 
 export function AccountPanel({ email, onClose, onSignedOut }: { email: string; onClose: () => void; onSignedOut: () => void }) {
   const [current, setCurrent] = useState('')
@@ -7,6 +8,13 @@ export function AccountPanel({ email, onClose, onSignedOut }: { email: string; o
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [asked, setAsked] = useState<Escalation[]>([])
+  const [erasing, setErasing] = useState(false)
+  const [erasePassword, setErasePassword] = useState('')
+
+  useEffect(() => {
+    void myEscalations().then(setAsked).catch(() => undefined)
+  }, [])
 
   const change = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,6 +40,17 @@ export function AccountPanel({ email, onClose, onSignedOut }: { email: string; o
       onSignedOut()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign out')
+    }
+  }
+
+  const erase = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    try {
+      await deleteAccount(erasePassword)
+      onSignedOut()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the account')
     }
   }
 
@@ -67,6 +86,42 @@ export function AccountPanel({ email, onClose, onSignedOut }: { email: string; o
           {error}
         </p>
       )}
+      {asked.length > 0 && (
+        <div className="asked" data-testid="asked">
+          <h3 className="eyebrow">Questions you sent to the team</h3>
+          <ul>
+            {asked.map((q) => (
+              <li key={q.id}>
+                <b>{q.question}</b>
+                <span className={`pill ${q.status}`}>{q.status === 'open' ? 'waiting' : 'answered'}</span>
+                {q.reply && <p>{q.reply}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="account-danger">
+        <h3 className="eyebrow">Your data</h3>
+        <p>Download everything this system holds about you, or erase your account.</p>
+        <button className="plain" onClick={() => void downloadMyData().catch((e) => setError(e instanceof Error ? e.message : 'Download failed'))}>
+          Download my data
+        </button>
+        {!erasing ? (
+          <button className="plain" onClick={() => setErasing(true)}>
+            Delete my account…
+          </button>
+        ) : (
+          <form onSubmit={erase}>
+            <label>
+              Confirm with your password
+              <input type="password" required autoComplete="current-password" value={erasePassword} onChange={(e) => setErasePassword(e.target.value)} />
+            </label>
+            <button type="submit" data-testid="confirm-erase">
+              Permanently delete my account
+            </button>
+          </form>
+        )}
+      </div>
       <div className="account-danger">
         <h3 className="eyebrow">Other devices</h3>
         <p>Lost a laptop or used a shared computer? End every session, including this one.</p>

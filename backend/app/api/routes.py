@@ -55,6 +55,7 @@ class ChatResponse(BaseModel):
     tokens: int = 0
     session_id: str = ""
     interpreted_as: str = ""
+    message_id: int = 0  # the answer, for feedback and escalation
 
 
 def _uid(user: User | None) -> int | None:
@@ -83,8 +84,8 @@ def session_history(sess: ChatSession | None) -> list[tuple[str, str]]:
     return pairs[-max(get_settings().memory_turns, 0) :] if get_settings().memory_turns > 0 else []
 
 
-def save_turn(db: Session, user: User | None, session_id: str | None, result: ChatResult) -> str:
-    """Append this exchange to a conversation (creating it if needed) and return its id."""
+def save_turn(db: Session, user: User | None, session_id: str | None, result: ChatResult) -> tuple[str, int]:
+    """Append this exchange to a conversation (creating it if needed); returns (conversation id, answer message id)."""
     sess = _own_session(db, session_id, user) if session_id else None
     if sess is None:
         sess = ChatSession(id=uuid.uuid4().hex, user_id=_uid(user), title=(result.question or "New conversation")[:80])
@@ -96,9 +97,10 @@ def save_turn(db: Session, user: User | None, session_id: str | None, result: Ch
         "interpreted_as": result.interpreted_as,
     }
     sess.messages.append(ChatMessage(role="user", content=result.question))
-    sess.messages.append(ChatMessage(role="assistant", content=result.answer, meta=meta))
+    answer = ChatMessage(role="assistant", content=result.answer, meta=meta)
+    sess.messages.append(answer)
     db.commit()
-    return sess.id
+    return sess.id, answer.id
 
 
 @router.get("/health")
@@ -115,10 +117,10 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User | None = De
     except LLMUnavailable as e:
         log.warning("llm_unavailable", extra={"error": str(e)[:400]})  # root cause (quota, outage) for operators
         raise HTTPException(503, "The language model is temporarily unavailable. Please try again shortly.")
-    return _response(result, save_turn(db, user, req.session_id, result))
+    return _response(result, *save_turn(db, user, req.session_id, result))
 
 
-def _response(result: ChatResult, session_id: str) -> ChatResponse:
+def _response(result: ChatResult, session_id: str, message_id: int = 0) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
         sources=[SourceOut(**vars(s)) for s in result.sources],
@@ -128,6 +130,7 @@ def _response(result: ChatResult, session_id: str) -> ChatResponse:
         tokens=result.prompt_tokens + result.completion_tokens,
         session_id=session_id,
         interpreted_as=result.interpreted_as,
+        message_id=message_id,
     )
 
 
@@ -147,8 +150,8 @@ def chat_stream(req: ChatRequest, db: Session = Depends(get_db), user: User | No
             try:
                 for kind, payload in run_pipeline(stream_db, req.question, _uid(user), stream=True, history=history):
                     if kind == "result":
-                        sid = save_turn(stream_db, user, req.session_id, payload)  # type: ignore[arg-type]
-                        yield _sse("done", _response(payload, sid).model_dump())  # type: ignore[arg-type]
+                        sid, mid = save_turn(stream_db, user, req.session_id, payload)  # type: ignore[arg-type]
+                        yield _sse("done", _response(payload, sid, mid).model_dump())  # type: ignore[arg-type]
                     else:
                         yield _sse(kind, {"stage" if kind == "stage" else "text": payload})
             except LLMUnavailable as e:
@@ -174,7 +177,10 @@ def get_session(session_id: str, db: Session = Depends(get_db), user: User | Non
     return {
         "id": sess.id,
         "title": sess.title,
-        "messages": [{"id": m.id, "role": m.role, "content": m.content, "meta": m.meta} for m in sess.messages],
+        "messages": [
+            {"id": m.id, "role": m.role, "content": m.content, "meta": m.meta, "feedback": m.feedback}
+            for m in sess.messages
+        ],
     }
 
 

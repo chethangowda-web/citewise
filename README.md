@@ -87,6 +87,8 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
 | `STALE_AFTER_DAYS` | `365` | An answer citing a document older than this carries an outdated-source warning (still answered, not refused); `0` turns it off |
 | `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
+| `RETENTION_DAYS` / `AUDIT_RETENTION_DAYS` | `0` / `0` | Delete conversations untouched for this many days, and audit-ledger rows older than this (`0` keeps everything). A background job applies them every `RETENTION_INTERVAL_HOURS` (6) |
+| `KEEP_AUDIT_ON_ACCOUNT_DELETE` | `false` | When someone deletes their account, also delete their audit rows (`false`) or keep them unlinked from the person (`true`) |
 | `LOCKOUT_ATTEMPTS` / `LOCKOUT_MINUTES` | `5` / `15` | Wrong passwords for one email before it is locked, and for how long (`0` attempts disables). Applies to any email, existing or not, so it reveals nothing about accounts |
 | `RESET_TTL_MINUTES` / `PUBLIC_URL` | `30` / `http://localhost:8080` | How long a password-reset link lives (it also works only once), and the address used to build it |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | empty | Where reset emails go. **With no `SMTP_HOST` the message, including its link, is written to the backend log**, which is fine locally and not for production |
@@ -113,6 +115,13 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
 | `GET` | `/api/admin/documents` | Every document and version, who can see it, and its status (`current` or `superseded`) |
 | `POST` | `/api/admin/documents/{id}/restore` | Make an archived version current again; the one it replaces is archived |
+| `POST` | `/api/messages/{id}/feedback` | `{rating: up\|down\|none, reason?}` on your own answer; reasons are stripped of personal data |
+| `POST` / `GET` | `/api/escalations` | Send a question the assistant could not settle to a person (`{message_id, note?}`); list your own with the replies |
+| `GET` / `DELETE` | `/api/auth/me/export`, `/api/auth/me` | Download everything held about you as JSON; erase the account (needs the password) |
+| `GET` | `/api/admin/feedback`, `/api/admin/escalations` | Review unhelpful answers; the staff inbox |
+| `POST` | `/api/admin/escalations/{id}/resolve` | Answer a question; the reply is emailed to the asker and shown under Account |
+| `GET` | `/api/admin/logs/export` | The audit ledger as CSV (`days`, `outcome` filters); cells that start with `=`, `+`, `-` or `@` are neutralised so a spreadsheet cannot run them |
+| `POST` | `/api/admin/retention/run` | Apply the retention limits now |
 | `POST` | `/api/auth/logout`, `/api/auth/logout-all` | Clear this session's cookie; or end every session of the user on every device |
 | `POST` | `/api/auth/change-password` | `{current_password, new_password}`; signs other devices out, keeps this one |
 | `POST` | `/api/auth/forgot`, `/api/auth/reset` | Request a reset link (always answers the same, whether or not the address has an account); set a new password with `{token, password}` |
@@ -142,6 +151,8 @@ Interactive docs are at `/docs` on the backend.
 - **Accounts are deliberately small:** email and password only, with no email verification and no two-factor sign-in (password reset exists, but it is only as safe as the mailbox it is sent to). The web app's session is an HttpOnly, SameSite=Lax cookie (no token in `localStorage`, so a script injected into the page cannot steal it), and requests that change data must carry a custom `X-Requested-With` header, which cross-site pages cannot send (CSRF). API clients without that header get a Bearer token in the response instead. Sessions can be revoked: changing or resetting a password, or "sign out everywhere", invalidates every token issued before it. Login lockout is stored in the database and so survives restarts, but the per-address rate limiter is not. Roles are admin, editor and viewer. A document is shared (everyone), private (its uploader) or a team's (that team's members): retrieval only searches what the asker may see, and an admin's own answers follow the same rule (the admin console lists everything, chat does not). Team documents outlive the person who uploaded them. There is no per-document sharing with individuals.
 - **Conversation memory is a rewrite, not a transcript.** A follow-up is first rewritten into a standalone question using the last few turns, and only that question is searched and answered, so the strict "answer only from the documents" prompt never sees the chat. The cost is one extra model call per follow-up. The rewrite is screened again and discarded if it is empty, too long, an attack, or the model is down, in which case your original question is used. Blocked turns are never fed back in. A rewrite can still misread an ambiguous follow-up; the UI shows "Understood as: ..." so you can see when it did.
 - **Freshness is by date, not by meaning.** The outdated-source warning compares a document's effective date (or the day it was filed) with `STALE_AFTER_DAYS`; it cannot tell that a newer policy elsewhere contradicts an older one. Archived versions are kept for history and restore but never searched, and deleting a document deletes its whole history.
+- **Feedback and escalation need people.** A thumbs-down only helps if someone reads the review queue, and "ask a person" only helps if someone watches the inbox: there is no assignment, SLA or notification to staff (the asker is emailed the reply). Without SMTP that email is only logged.
+- **Erasure is deliberate but not total.** Deleting an account removes its conversations, private documents, feedback and (by default) audit rows; questions it sent to staff stay for the team with the person unlinked; team documents it uploaded stay with the team; backups and logs outside the database are not touched.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -290,7 +301,7 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 169 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 191 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 18 unit tests (including the SSE parser)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
@@ -298,6 +309,7 @@ cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admi
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test versions  # +1 versioning, freshness and restore test (real model)
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test security  # +4: cookie, reset link, sign out everywhere, change password
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test feedback  # +1: feedback, ask a person, staff inbox, CSV, data download, account erasure
 cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the same suite against the nginx build
 ```
 

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     default_role: str = "editor"  # role of new accounts (the very first account is always admin): editor | viewer
     jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
     jwt_ttl_minutes: int = 60 * 24 * 7
+    # Data retention. Chat history and the audit ledger are kept forever unless you set a number of days.
+    retention_days: int = 0  # delete conversations not touched for this long; 0 = keep
+    audit_retention_days: int = 0  # delete audit-ledger rows older than this; 0 = keep
+    retention_interval_hours: int = 6
+    keep_audit_on_account_delete: bool = False  # False: deleting an account also deletes its audit rows
     auth_rate_limit_per_minute: int = 10  # login/register attempts per client address; 0 disables
     lockout_attempts: int = 5  # wrong passwords for one email before it is locked; 0 disables
     lockout_minutes: int = 15

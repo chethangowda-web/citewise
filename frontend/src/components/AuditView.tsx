@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { adminLogs, adminStats } from '../api'
+import { adminLogs, adminStats, downloadAuditCsv } from '../api'
 import type { AdminStats, AuditRow } from '../types'
 
 const OUTCOMES = ['all', 'answered', 'refused', 'blocked'] as const
@@ -85,6 +85,12 @@ export function AuditView({ account = false }: { account?: boolean }) {
         </h2>
         <button className="ghost" onClick={() => void load()} disabled={loading}>
           {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <button
+          className="ghost"
+          onClick={() => void downloadAuditCsv(key).catch((e) => setError(e instanceof Error ? e.message : 'Export failed'))}
+        >
+          Export CSV
         </button>
         <button
           className="ghost"

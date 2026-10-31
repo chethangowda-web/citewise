@@ -230,6 +230,8 @@ export default function App() {
             outcome: a.meta.outcome,
             tokens: a.meta.tokens,
             interpreted_as: a.meta.interpreted_as,
+            message_id: a.id,
+            feedback: a.feedback ?? null,
           },
         })
       }

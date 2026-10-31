@@ -34,6 +34,8 @@ def init_db() -> None:
             # source used to be globally unique; it is now unique per owner (see models.py)
             "ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_source_key",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(10) NOT NULL DEFAULT 'editor'",
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS feedback INTEGER",
+            "ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS feedback_reason TEXT",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
             # Accounts that predate roles: someone must be able to administer, so the oldest one becomes admin.
             "UPDATE users SET role = 'admin' WHERE id = (SELECT min(id) FROM users) "
