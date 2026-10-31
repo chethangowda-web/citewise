@@ -10,6 +10,8 @@ import type {
   DocInfo,
   Escalation,
   FeedbackReview,
+  MyUsage,
+  UsageReport,
   SessionDetail,
   SessionInfo,
   Role,
@@ -140,6 +142,8 @@ export const askAPerson = (messageId: number, note: string) =>
     body: JSON.stringify({ message_id: messageId, note }),
   }).then((r) => parse<Escalation & { already_sent: boolean }>(r))
 
+export const myUsage = () => fetch('/api/usage/me', { headers: headers() }).then((r) => parse<MyUsage>(r))
+
 export const myEscalations = () => fetch('/api/escalations', { headers: headers() }).then((r) => parse<Escalation[]>(r))
 
 /** Save a response as a file. Fetched with the page's credentials, so it works for a cookie session or an admin key. */
@@ -230,5 +234,6 @@ export const adminRemoveMember = (team: number, user: number) => adminJson('DELE
 export const adminFeedback = (rating: 'down' | 'up' | 'all') => adminJson('GET', `/feedback?rating=${rating}`).then((r) => parse<FeedbackReview>(r))
 export const adminInbox = (status: 'open' | 'resolved') => adminJson('GET', `/escalations?status=${status}`).then((r) => parse<Escalation[]>(r))
 export const adminResolve = (id: number, reply: string) => adminJson('POST', `/escalations/${id}/resolve`, { reply }).then(adminDone)
+export const adminUsage = (days: number) => adminJson('GET', `/usage?days=${days}`).then((r) => parse<UsageReport>(r))
 export const adminRestore = (id: number) => adminJson('POST', `/documents/${id}/restore`).then(adminDone)
 export const adminDocuments = () => adminJson('GET', '/documents').then((r) => parse<AdminDoc[]>(r))

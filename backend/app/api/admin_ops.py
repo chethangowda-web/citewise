@@ -13,8 +13,10 @@ from app.api.feedback import escalation_out, question_for
 from app.auth import admin_access
 from app.db import get_db
 from app.mailer import send_mail
+from app.config import get_settings
 from app.models import AuditLog, ChatMessage, Escalation, User
 from app.retention import purge_expired
+from app.usage import tokens_used
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(admin_access)])
 
@@ -109,6 +111,41 @@ def export_audit_csv(
 
     name = f"citewise-audit-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
     return StreamingResponse(rows(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.get("/usage")
+def usage_report(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)):
+    """Where the tokens (and the money) went: per day and per person, with the configured limits for context."""
+    s = get_settings()
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    tokens = AuditLog.prompt_tokens + AuditLog.completion_tokens
+    cost = lambda p, c: round((p * s.price_in_per_m + c * s.price_out_per_m) / 1_000_000, 6)  # noqa: E731
+    day = func.date_trunc("day", AuditLog.created_at)
+    by_day = db.execute(
+        select(day, func.count(), func.sum(AuditLog.prompt_tokens), func.sum(AuditLog.completion_tokens))
+        .where(AuditLog.created_at >= since).group_by(day).order_by(day)
+    ).all()
+    by_user = db.execute(
+        select(AuditLog.user_id, User.email, func.count(), func.sum(AuditLog.prompt_tokens), func.sum(AuditLog.completion_tokens), func.max(AuditLog.created_at))
+        .outerjoin(User, User.id == AuditLog.user_id).where(AuditLog.created_at >= since)
+        .group_by(AuditLog.user_id, User.email).order_by(func.sum(tokens).desc())
+    ).all()
+    total_p = sum(r[2] or 0 for r in by_day)  # columns: day, questions, prompt tokens, completion tokens
+    total_c = sum(r[3] or 0 for r in by_day)
+    return {
+        "days": days,
+        "total": {"questions": sum(r[1] for r in by_day), "tokens": total_p + total_c, "cost_usd": cost(total_p, total_c)},
+        "by_day": [
+            {"date": d.date().isoformat(), "questions": n, "tokens": (p or 0) + (c or 0), "cost_usd": cost(p or 0, c or 0)}
+            for d, n, p, c in by_day
+        ],
+        "by_user": [
+            {"user_id": uid, "email": email, "questions": n, "tokens": (p or 0) + (c or 0), "cost_usd": cost(p or 0, c or 0), "last_used": last.isoformat()}
+            for uid, email, n, p, c, last in by_user
+        ],
+        "limits": {"per_user_daily": s.user_daily_token_limit, "global_daily": s.global_daily_token_limit},
+        "last_24h_tokens": tokens_used(db),
+    }
 
 
 @router.post("/retention/run")

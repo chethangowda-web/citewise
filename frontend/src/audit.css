@@ -945,3 +945,69 @@
   max-height: calc(100vh - 5rem);
   overflow-y: auto;
 }
+
+/* ---------- usage ---------- */
+.usage-me p {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+.meter {
+  height: 8px;
+  background: var(--rule);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.meter span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+.meter span.full {
+  background: var(--stamp);
+}
+.usage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+.usage-head label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 500 0.66rem var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 7rem;
+  margin: 0.4rem 0 1.2rem;
+  padding: 0.5rem;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+.bar {
+  flex: 1;
+  min-width: 6px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.bar span {
+  width: 100%;
+  background: var(--ink);
+  border-radius: 2px 2px 0 0;
+}
+.bar small {
+  font: 400 0.55rem var(--mono);
+  color: var(--ink-3);
+}

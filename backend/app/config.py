@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     default_role: str = "editor"  # role of new accounts (the very first account is always admin): editor | viewer
     jwt_secret: str = ""  # set a long random value in production; if empty a random one is made per process
     jwt_ttl_minutes: int = 60 * 24 * 7
+    # Spending guards (tokens in the last 24 hours, read from the audit ledger; 0 = no limit).
+    user_daily_token_limit: int = 0  # per person; admins are exempt
+    global_daily_token_limit: int = 0  # across everyone, admins included: protects the model budget
     # Data retention. Chat history and the audit ledger are kept forever unless you set a number of days.
     retention_days: int = 0  # delete conversations not touched for this long; 0 = keep
     audit_retention_days: int = 0  # delete audit-ledger rows older than this; 0 = keep

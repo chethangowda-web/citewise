@@ -87,6 +87,7 @@ Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI,
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
 | `STALE_AFTER_DAYS` | `365` | An answer citing a document older than this carries an outdated-source warning (still answered, not refused); `0` turns it off |
 | `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
+| `USER_DAILY_TOKEN_LIMIT` / `GLOBAL_DAILY_TOKEN_LIMIT` | `0` / `0` | Token budget over the last 24 hours (`0` = no limit): per person (admins exempt), and across everyone (admins included, so one runaway client cannot empty your model quota). Over the limit a question is refused with a 429 before any model call, and refusals and blocks cost nothing |
 | `RETENTION_DAYS` / `AUDIT_RETENTION_DAYS` | `0` / `0` | Delete conversations untouched for this many days, and audit-ledger rows older than this (`0` keeps everything). A background job applies them every `RETENTION_INTERVAL_HOURS` (6) |
 | `KEEP_AUDIT_ON_ACCOUNT_DELETE` | `false` | When someone deletes their account, also delete their audit rows (`false`) or keep them unlinked from the person (`true`) |
 | `LOCKOUT_ATTEMPTS` / `LOCKOUT_MINUTES` | `5` / `15` | Wrong passwords for one email before it is locked, and for how long (`0` attempts disables). Applies to any email, existing or not, so it reveals nothing about accounts |
@@ -115,6 +116,8 @@ Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI,
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
 | `GET` | `/api/admin/documents` | Every document and version, who can see it, and its status (`current` or `superseded`) |
 | `POST` | `/api/admin/documents/{id}/restore` | Make an archived version current again; the one it replaces is archived |
+| `GET` | `/api/usage/me` | Your tokens used in the last 24 hours against your allowance |
+| `GET` | `/api/admin/usage` | Tokens and estimated cost per day and per person (`days`, default 30), with the configured limits |
 | `POST` | `/api/messages/{id}/feedback` | `{rating: up\|down\|none, reason?}` on your own answer; reasons are stripped of personal data |
 | `POST` / `GET` | `/api/escalations` | Send a question the assistant could not settle to a person (`{message_id, note?}`); list your own with the replies |
 | `GET` / `DELETE` | `/api/auth/me/export`, `/api/auth/me` | Download everything held about you as JSON; erase the account (needs the password) |
@@ -154,6 +157,7 @@ Interactive docs are at `/docs` on the backend.
 - **Feedback and escalation need people.** A thumbs-down only helps if someone reads the review queue, and "ask a person" only helps if someone watches the inbox: there is no assignment, SLA or notification to staff (the asker is emailed the reply). Without SMTP that email is only logged.
 - **Erasure is deliberate but not total.** Deleting an account removes its conversations, private documents, feedback and (by default) audit rows; questions it sent to staff stay for the team with the person unlinked; team documents it uploaded stay with the team; backups and logs outside the database are not touched.
 - **Hidden text is dropped, not detected.** HTML and Word files can carry text a reader never sees (`display:none`, `hidden`, comments, Word's hidden-text formatting); the extractors leave it out entirely, so it cannot reach the index or the model. Text that is merely hard to see (white on white, tiny, off-screen) is still extracted, and the quarantine scan is the only defence for that. Scanned PDFs without a text layer produce no text, and macros, embedded objects, headers, footers and comments in Word files are ignored.
+- **Spending limits are a guard, not a meter.** Usage is summed from the audit ledger over a sliding 24 hours, so there is no counter to reset, but concurrent requests can overshoot a limit slightly, and the cost shown is an estimate from the configured list prices. Retention that deletes audit rows also removes that history from the report.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -302,12 +306,14 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 191 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 230 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 18 unit tests (including the SSE parser)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test filetypes  # +1: real .docx and .html files with hidden planted text
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test usage  # +1: needs USER_DAILY_TOKEN_LIMIT=500 on the server
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test versions  # +1 versioning, freshness and restore test (real model)
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test security  # +4: cookie, reset link, sign out everywhere, change password
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test feedback  # +1: feedback, ask a person, staff inbox, CSV, data download, account erasure

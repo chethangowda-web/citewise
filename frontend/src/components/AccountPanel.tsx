@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { changePassword, deleteAccount, downloadMyData, logoutAll, myEscalations } from '../api'
-import type { Escalation } from '../types'
+import { changePassword, deleteAccount, downloadMyData, logoutAll, myEscalations, myUsage } from '../api'
+import type { Escalation, MyUsage } from '../types'
 
 export function AccountPanel({ email, onClose, onSignedOut }: { email: string; onClose: () => void; onSignedOut: () => void }) {
   const [current, setCurrent] = useState('')
@@ -9,11 +9,13 @@ export function AccountPanel({ email, onClose, onSignedOut }: { email: string; o
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [asked, setAsked] = useState<Escalation[]>([])
+  const [usage, setUsage] = useState<MyUsage | null>(null)
   const [erasing, setErasing] = useState(false)
   const [erasePassword, setErasePassword] = useState('')
 
   useEffect(() => {
     void myEscalations().then(setAsked).catch(() => undefined)
+    void myUsage().then(setUsage).catch(() => undefined)
   }, [])
 
   const change = async (e: React.FormEvent) => {
@@ -62,6 +64,23 @@ export function AccountPanel({ email, onClose, onSignedOut }: { email: string; o
           ×
         </button>
       </header>
+      {usage && (
+        <div className="usage-me" data-testid="usage-me">
+          <h3 className="eyebrow">Your usage, last 24 hours</h3>
+          {usage.unlimited ? (
+            <p>{usage.used.toLocaleString()} tokens used. No daily limit applies to you.</p>
+          ) : (
+            <>
+              <p>
+                {usage.used.toLocaleString()} of {usage.limit.toLocaleString()} tokens used
+              </p>
+              <div className="meter" role="progressbar" aria-valuenow={usage.used} aria-valuemax={usage.limit}>
+                <span style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }} className={usage.used >= usage.limit ? 'full' : ''} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <form onSubmit={change}>
         <h3 className="eyebrow">Change password</h3>
         <label>

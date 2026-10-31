@@ -12,13 +12,14 @@ import {
   adminRestore,
   adminSetRole,
   adminTeams,
+  adminUsage,
   adminUsers,
   deleteDocument,
 } from '../api'
-import type { AdminDoc, AdminTeam, AdminUser, Escalation, FeedbackReview, Role } from '../types'
+import type { AdminDoc, AdminTeam, AdminUser, Escalation, FeedbackReview, Role, UsageReport } from '../types'
 
 const ROLES: Role[] = ['admin', 'editor', 'viewer']
-const TABS = ['users', 'teams', 'documents', 'feedback', 'inbox'] as const
+const TABS = ['users', 'teams', 'documents', 'feedback', 'inbox', 'usage'] as const
 type Tab = (typeof TABS)[number]
 
 export function AdminView({ meId }: { meId: number }) {
@@ -29,22 +30,25 @@ export function AdminView({ meId }: { meId: number }) {
   const [review, setReview] = useState<FeedbackReview>({ up: 0, down: 0, rows: [] })
   const [inbox, setInbox] = useState<(Escalation & { user?: string | null })[]>([])
   const [replies, setReplies] = useState<Record<number, string>>({})
+  const [usage, setUsage] = useState<UsageReport | null>(null)
+  const [usageDays, setUsageDays] = useState(30)
   const [error, setError] = useState('')
   const [teamName, setTeamName] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const [u, t, d, f, i] = await Promise.all([adminUsers(), adminTeams(), adminDocuments(), adminFeedback('down'), adminInbox('open')])
+      const [u, t, d, f, i, g] = await Promise.all([adminUsers(), adminTeams(), adminDocuments(), adminFeedback('down'), adminInbox('open'), adminUsage(usageDays)])
       setUsers(u)
       setTeams(t)
       setDocs(d)
       setReview(f)
       setInbox(i)
+      setUsage(g)
       setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load the admin data')
     }
-  }, [])
+  }, [usageDays])
 
   // Reload on every tab switch: other people change this data while the console is open.
   useEffect(() => {
@@ -259,6 +263,67 @@ export function AdminView({ meId }: { meId: number }) {
               </p>
             </article>
           ))}
+        </div>
+      )}
+
+      {tab === 'usage' && usage && (
+        <div data-testid="admin-usage">
+          <div className="usage-head">
+            <label>
+              Period
+              <select aria-label="Usage period" value={usageDays} onChange={(e) => setUsageDays(Number(e.target.value))}>
+                {[7, 30, 90].map((d) => (
+                  <option key={d} value={d}>
+                    last {d} days
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span>
+              <b data-testid="usage-questions">{usage.total.questions.toLocaleString()}</b> questions ·{' '}
+              <b data-testid="usage-tokens">{usage.total.tokens.toLocaleString()}</b> tokens · about{' '}
+              <b data-testid="usage-cost">${usage.total.cost_usd.toFixed(4)}</b>
+            </span>
+          </div>
+          <p className="admin-lede">
+            Limits: {usage.limits.per_user_daily ? `${usage.limits.per_user_daily.toLocaleString()} tokens per person per day` : 'no per-person limit'} ·{' '}
+            {usage.limits.global_daily ? `${usage.limits.global_daily.toLocaleString()} tokens per day overall` : 'no overall limit'}. Last 24 hours: {usage.last_24h_tokens.toLocaleString()} tokens.
+          </p>
+          <div className="bars" aria-label="Tokens per day">
+            {usage.by_day.map((d) => (
+              <div key={d.date} className="bar" title={`${d.date}: ${d.tokens.toLocaleString()} tokens, ${d.questions} questions`}>
+                <span style={{ height: `${Math.max(4, (d.tokens / Math.max(...usage.by_day.map((x) => x.tokens), 1)) * 100)}%` }} />
+                <small>{d.date.slice(5)}</small>
+              </div>
+            ))}
+          </div>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Questions</th>
+                <th>Tokens</th>
+                <th>Cost</th>
+                <th>Last used</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usage.by_user.length === 0 && (
+                <tr>
+                  <td colSpan={5}>No usage in this period.</td>
+                </tr>
+              )}
+              {usage.by_user.map((u) => (
+                <tr key={u.user_id ?? 'none'}>
+                  <td>{u.email ?? '(no account)'}</td>
+                  <td>{u.questions.toLocaleString()}</td>
+                  <td>{u.tokens.toLocaleString()}</td>
+                  <td>${u.cost_usd.toFixed(4)}</td>
+                  <td>{u.last_used.slice(0, 10)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

@@ -93,6 +93,21 @@ export interface FeedbackRow {
   user: string | null
 }
 
+export interface MyUsage {
+  used: number
+  limit: number
+  unlimited: boolean
+}
+
+export interface UsageReport {
+  days: number
+  total: { questions: number; tokens: number; cost_usd: number }
+  by_day: { date: string; questions: number; tokens: number; cost_usd: number }[]
+  by_user: { user_id: number | null; email: string | null; questions: number; tokens: number; cost_usd: number; last_used: string }[]
+  limits: { per_user_daily: number; global_daily: number }
+  last_24h_tokens: number
+}
+
 export interface FeedbackReview {
   up: number
   down: number

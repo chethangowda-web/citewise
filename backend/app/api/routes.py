@@ -20,6 +20,7 @@ from app.rag.extract import SUPPORTED_EXTENSIONS
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
 from app.rag.pipeline import ChatResult, answer_question, run_pipeline
 from app.rag.retriever import document_updated, visible_to
+from app.usage import enforce_budget, my_usage
 
 router = APIRouter()
 log = logging.getLogger("rag.api")
@@ -113,6 +114,7 @@ def health(db: Session = Depends(get_db)):
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key), Depends(rate_limit)])
 def chat(req: ChatRequest, db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
     sess = _own_session(db, req.session_id, user) if req.session_id else None  # fail before spending an LLM call
+    enforce_budget(db, user)
     try:
         result = answer_question(db, req.question, _uid(user), history=session_history(sess))
     except LLMUnavailable as e:
@@ -145,6 +147,7 @@ def chat_stream(req: ChatRequest, db: Session = Depends(get_db), user: User | No
     model writes, then `done` with the verified answer, which replaces the draft. `error` if the model is down."""
     sess = _own_session(db, req.session_id, user) if req.session_id else None  # a plain 404 before the stream opens
     history = session_history(sess)  # read now: the request session may be closed before the stream runs
+    enforce_budget(db, user)  # a plain 429 before the stream opens
 
     def events():
         with SessionLocal() as stream_db:  # the request-scoped session may be closed before the stream ends
@@ -162,6 +165,12 @@ def chat_stream(req: ChatRequest, db: Session = Depends(get_db), user: User | No
     return StreamingResponse(
         events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
+
+
+@router.get("/usage/me", dependencies=[Depends(require_api_key)])
+def usage_me(db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
+    """Tokens spent in the last 24 hours against your allowance."""
+    return my_usage(db, user)
 
 
 @router.get("/sessions", dependencies=[Depends(require_api_key)])
