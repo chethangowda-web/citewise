@@ -1,11 +1,9 @@
 """Ingest documents: python -m app.rag.ingest ../data/policies"""
 import hashlib
-import io
 import sys
 from datetime import date
 from pathlib import Path
 
-from pypdf import PdfReader
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,6 +15,7 @@ from app.db import SessionLocal, init_db
 from app.llm.providers import get_embedder
 from app.models import Chunk, Document
 from app.rag.chunking import chunk_text
+from app.rag.extract import SUPPORTED_EXTENSIONS, extract_text  # noqa: F401  (extract_text is re-exported)
 
 
 def title_from_filename(filename: str) -> str:
@@ -24,11 +23,6 @@ def title_from_filename(filename: str) -> str:
     return stem.replace("_", " ").replace("-", " ").title()
 
 
-def extract_text(filename: str, data: bytes) -> str:
-    if filename.lower().endswith(".pdf"):
-        reader = PdfReader(io.BytesIO(data))
-        return "\n\n".join(page.extract_text() or "" for page in reader.pages)
-    return data.decode("utf-8", errors="replace")
 
 
 def ingest_document(
@@ -91,7 +85,7 @@ def main(folder: str) -> None:
     init_db()
     with SessionLocal() as db:
         for path in sorted(Path(folder).glob("*")):
-            if path.suffix.lower() not in {".md", ".txt", ".pdf"}:
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
             doc = ingest_document(db, path.name, title_from_filename(path.name), extract_text(path.name, path.read_bytes()))
             held = sum(c.quarantined for c in doc.chunks)

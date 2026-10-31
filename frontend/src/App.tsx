@@ -173,6 +173,7 @@ export default function App() {
     setUploading(true)
     setDocError('')
     setDocNotice('')
+    const failures: string[] = []
     for (const f of files) {
       try {
         const r = await uploadDocument(f, target, effectiveDate)
@@ -186,10 +187,11 @@ export default function App() {
           setDocNotice(`${f.name} filed as version ${r.version}. The previous version is archived and no longer used for answers.`)
         }
       } catch (e) {
-        setDocError(`${f.name}: ${e instanceof Error ? e.message : 'upload failed'}`)
+        failures.push(`${f.name}: ${e instanceof Error ? e.message : 'upload failed'}`)
       }
     }
-    await refreshDocs()
+    await refreshDocs() // a successful refresh clears the error line, so show the failures after it
+    if (failures.length) setDocError(failures.join(' · '))
     setUploading(false)
   }
 

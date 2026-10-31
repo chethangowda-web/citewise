@@ -16,6 +16,7 @@ from app.db import SessionLocal, get_db
 from app.llm.providers import LLMUnavailable
 from app.models import ChatMessage, ChatSession, Document, Team, TeamMember, User
 from app.observability import rate_limit
+from app.rag.extract import SUPPORTED_EXTENSIONS
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
 from app.rag.pipeline import ChatResult, answer_question, run_pipeline
 from app.rag.retriever import document_updated, visible_to
@@ -272,8 +273,8 @@ def upload_document(
         except ValueError:
             raise HTTPException(422, "effective_date must look like 2026-03-01")
     name = file.filename or "upload.txt"
-    if not name.lower().endswith((".pdf", ".md", ".txt")):
-        raise HTTPException(400, "Only .pdf, .md and .txt files are supported")
+    if not name.lower().endswith(SUPPORTED_EXTENSIONS):
+        raise HTTPException(400, "Only .pdf, .docx, .html, .md and .txt files are supported")
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large (max 5 MB)")

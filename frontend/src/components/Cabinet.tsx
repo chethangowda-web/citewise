@@ -103,13 +103,13 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
         <button className="drop-btn" onClick={() => input.current?.click()} disabled={uploading}>
           {uploading ? 'Filing…' : 'File a document'}
         </button>
-        <small>Drop .pdf .md .txt here · 5 MB max</small>
+        <small>Drop .pdf .docx .html .md .txt here · 5 MB max</small>
         <input
           ref={input}
           type="file"
           hidden
           multiple
-          accept=".pdf,.md,.txt"
+          accept=".pdf,.docx,.html,.htm,.md,.txt"
           data-testid="file-input"
           onChange={(e) => {
             send(Array.from(e.target.files ?? []))

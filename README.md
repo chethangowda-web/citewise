@@ -70,7 +70,7 @@ docker compose run --rm ingest  # load the sample policies in data/policies
 
 Open **http://localhost:8080**. For local development the override file also publishes the backend on `:8000` and Postgres on `:${DB_PORT:-5432}`. For a production-style run (only nginx published): `docker compose -f docker-compose.yml up -d`.
 
-Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into `data/policies` and re-run the ingest.
+Upload your own `.pdf`, `.docx`, `.html`, `.md` or `.txt` documents from the UI, or drop them into `data/policies` and re-run the ingest.
 
 ## Configuration
 
@@ -153,6 +153,7 @@ Interactive docs are at `/docs` on the backend.
 - **Freshness is by date, not by meaning.** The outdated-source warning compares a document's effective date (or the day it was filed) with `STALE_AFTER_DAYS`; it cannot tell that a newer policy elsewhere contradicts an older one. Archived versions are kept for history and restore but never searched, and deleting a document deletes its whole history.
 - **Feedback and escalation need people.** A thumbs-down only helps if someone reads the review queue, and "ask a person" only helps if someone watches the inbox: there is no assignment, SLA or notification to staff (the asker is emailed the reply). Without SMTP that email is only logged.
 - **Erasure is deliberate but not total.** Deleting an account removes its conversations, private documents, feedback and (by default) audit rows; questions it sent to staff stay for the team with the person unlinked; team documents it uploaded stay with the team; backups and logs outside the database are not touched.
+- **Hidden text is dropped, not detected.** HTML and Word files can carry text a reader never sees (`display:none`, `hidden`, comments, Word's hidden-text formatting); the extractors leave it out entirely, so it cannot reach the index or the model. Text that is merely hard to see (white on white, tiny, off-screen) is still extracted, and the quarantine scan is the only defence for that. Scanned PDFs without a text layer produce no text, and macros, embedded objects, headers, footers and comments in Word files are ignored.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
