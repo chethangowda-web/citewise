@@ -1,10 +1,12 @@
 """Ingest documents: python -m app.rag.ingest ../data/policies"""
+import hashlib
 import io
 import sys
+from datetime import date
 from pathlib import Path
 
 from pypdf import PdfReader
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import logging
@@ -30,22 +32,46 @@ def extract_text(filename: str, data: bytes) -> str:
 
 
 def ingest_document(
-    db: Session, source: str, title: str, text: str, owner_id: int | None = None, team_id: int | None = None
+    db: Session,
+    source: str,
+    title: str,
+    text: str,
+    owner_id: int | None = None,
+    team_id: int | None = None,
+    effective_date: date | None = None,
 ) -> Document:
-    """Idempotent: re-ingesting the same source (in the same scope) replaces its chunks."""
+    """File a document. Re-ingesting a source (in the same scope) with identical text changes nothing;
+    with changed text the old one becomes a superseded version and the new one is current.
+
+    The returned document has `unchanged` set to True when nothing had to be done.
+    """
     s = get_settings()
     pieces = chunk_text(text, s.chunk_size, s.chunk_overlap)
     if not pieces:
         raise ValueError("Document contains no extractable text")
-    vectors = get_embedder().embed(pieces)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     owner_match = Document.owner_id.is_(None) if owner_id is None else Document.owner_id == owner_id
     team_match = Document.team_id.is_(None) if team_id is None else Document.team_id == team_id
-    existing = db.scalar(select(Document).where(Document.source == source, owner_match, team_match))
-    if existing:
-        db.delete(existing)
-        db.flush()
-    doc = Document(title=title, source=source, owner_id=owner_id, team_id=team_id)
+    existing = db.scalar(select(Document).where(Document.source == source, owner_match, team_match, Document.status == "current"))
+    if existing is not None and existing.content_hash == digest:
+        if effective_date is not None and existing.effective_date != effective_date:
+            existing.effective_date = effective_date  # same text, newly confirmed date: no new version needed
+            db.commit()
+        existing.unchanged = True  # type: ignore[attr-defined]
+        return existing
+    vectors = get_embedder().embed(pieces)
+    version = 1
+    if existing is not None:
+        latest = db.scalar(select(func.max(Document.version)).where(Document.source == source, owner_match, team_match)) or 1
+        version = latest + 1
+        existing.status = "superseded"
+        db.flush()  # free the unique slot before the new current version is inserted
+    doc = Document(
+        title=title, source=source, owner_id=owner_id, team_id=team_id,
+        version=version, effective_date=effective_date, content_hash=digest,
+    )
+    doc.unchanged = False  # type: ignore[attr-defined]
     scans = [scan_chunk(p) for p in pieces]
     doc.chunks = [
         Chunk(position=i, content=p, embedding=v, quarantined=bool(reasons))

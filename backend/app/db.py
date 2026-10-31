@@ -41,8 +41,14 @@ def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS ix_documents_team_id ON documents (team_id)",
             # the unique key now includes the team (see models.py)
             "DROP INDEX IF EXISTS uq_documents_owner_source",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS status VARCHAR(12) NOT NULL DEFAULT 'current'",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS effective_date DATE",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash VARCHAR(64)",
+            # only current documents must be unique per source: old versions are kept beside them
+            "DROP INDEX IF EXISTS uq_documents_scope_source",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_scope_source "
-            "ON documents ((coalesce(owner_id, 0)), (coalesce(team_id, 0)), source)",
+            "ON documents ((coalesce(owner_id, 0)), (coalesce(team_id, 0)), source) WHERE status = 'current'",
         ):
             conn.execute(text(ddl))
 

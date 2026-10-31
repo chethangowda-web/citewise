@@ -128,9 +128,10 @@ export const deleteSession = (id: string) =>
 
 export const listDocuments = () => fetch('/api/documents', { headers: headers() }).then((r) => parse<DocInfo[]>(r))
 
-export const uploadDocument = (file: File, target?: UploadTarget) => {
+export const uploadDocument = (file: File, target?: UploadTarget, effectiveDate?: string) => {
   const form = new FormData()
   form.append('file', file)
+  if (effectiveDate) form.append('effective_date', effectiveDate)
   if (target) {
     form.append('scope', target.scope)
     if (target.scope === 'team' && target.teamId != null) form.append('team_id', String(target.teamId))
@@ -171,4 +172,5 @@ export const adminCreateTeam = (name: string) => adminJson('POST', '/teams', { n
 export const adminDeleteTeam = (id: number) => adminJson('DELETE', `/teams/${id}`).then(adminDone)
 export const adminAddMember = (team: number, user: number) => adminJson('PUT', `/teams/${team}/members/${user}`).then(adminDone)
 export const adminRemoveMember = (team: number, user: number) => adminJson('DELETE', `/teams/${team}/members/${user}`).then(adminDone)
+export const adminRestore = (id: number) => adminJson('POST', `/documents/${id}/restore`).then(adminDone)
 export const adminDocuments = () => adminJson('GET', '/documents').then((r) => parse<AdminDoc[]>(r))

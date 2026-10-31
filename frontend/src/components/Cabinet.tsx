@@ -7,7 +7,7 @@ interface Props {
   uploading: boolean
   error: string
   notice: string
-  onUpload: (files: File[], target?: UploadTarget) => void
+  onUpload: (files: File[], target?: UploadTarget, effectiveDate?: string) => void
   user?: AuthUser | null // set when accounts are on
   onDelete: (doc: DocInfo) => void
   children?: ReactNode // rendered above the archive (the conversations list)
@@ -17,9 +17,12 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
   const input = useRef<HTMLInputElement>(null)
   const [who, setWho] = useState('private') // private | shared | team:<id>
   const canUpload = !user || user.role !== 'viewer'
+  const [effective, setEffective] = useState('') // optional: when the policy took effect
   const send = (files: File[]) => {
-    if (!user) return onUpload(files)
-    onUpload(files, who.startsWith('team:') ? { scope: 'team', teamId: Number(who.slice(5)) } : { scope: who === 'shared' ? 'shared' : 'private' })
+    const date = effective || undefined
+    setEffective('') // applies to this upload only
+    if (!user) return onUpload(files, undefined, date)
+    onUpload(files, who.startsWith('team:') ? { scope: 'team', teamId: Number(who.slice(5)) } : { scope: who === 'shared' ? 'shared' : 'private' }, date)
   }
   const [over, setOver] = useState(false)
   const chunks = docs.reduce((n, d) => n + d.chunks, 0)
@@ -41,8 +44,15 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
             <span className="folder-name">{d.title}</span>
             <span className="folder-meta" title={d.scope === 'team' ? `Visible to the ${d.team} team` : d.private ? 'Only you can see and search this document' : undefined}>
               {d.chunks} {d.chunks === 1 ? 'passage' : 'passages'}
+              {d.versions && d.versions > 1 ? ` · v${d.version}` : ''}
+              {d.updated_at ? ` · ${d.updated_at}` : ''}
               {d.scope === 'team' ? ` · team ${d.team}` : d.private && ' · private'}
             </span>
+            {d.stale && (
+              <span className="folder-flag" title="Not updated for a long time. Answers citing it carry a warning.">
+                ⚠ may be outdated
+              </span>
+            )}
             {!!d.quarantined && (
               <span className="folder-flag" title="Some passages look like prompt injection and are never used for answers">
                 ⚠ {d.quarantined} quarantined
@@ -68,6 +78,12 @@ export function Cabinet({ docs, loading, uploading, error, notice, onUpload, onD
             ))}
             {user.role === 'admin' && <option value="shared">Everyone</option>}
           </select>
+        </label>
+      )}
+      {canUpload && (
+        <label className="scope-pick">
+          Policy effective date (optional)
+          <input type="date" value={effective} onChange={(e) => setEffective(e.target.value)} data-testid="effective-date" />
         </label>
       )}
       <div

@@ -2,6 +2,7 @@ import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,9 @@ class Source:
     source: str
     snippet: str
     similarity: float
+    updated_at: str = ""  # when the document took effect or was filed (ISO date)
+    version: int = 1
+    stale: bool = False  # older than STALE_AFTER_DAYS
 
 
 @dataclass
@@ -78,6 +82,10 @@ def _standalone(question: str, history: list[tuple[str, str]], max_chars: int) -
         log.warning("rewrite_rejected", extra={"length": len(text)})
         return question, gen
     return redact_pii(text)[0], gen
+
+
+def _is_stale(updated: datetime | None, days: int) -> bool:
+    return bool(days > 0 and updated and (datetime.now(timezone.utc) - updated).days > days)
 
 
 def _outcome(flags: list[str]) -> str:
@@ -182,10 +190,15 @@ def run_pipeline(
                 answer = gen.text
                 cited = sorted({int(n) for n in CITATION_RE.findall(_normalize_citations(gen.text))})
             sources = [
-                Source(i, h.document_title, h.source, h.content[:300], round(h.similarity, 3))
+                Source(
+                    i, h.document_title, h.source, h.content[:300], round(h.similarity, 3),
+                    h.updated.date().isoformat() if h.updated else "", h.version, _is_stale(h.updated, s.stale_after_days),
+                )
                 for i, h in enumerate(hits, 1)
                 if i in cited
             ]
+            if s.guardrails_enabled and any(x.stale for x in sources):
+                flags.append("outdated_source")  # still answered, but the reader is told the evidence is old
 
     latency = int((time.perf_counter() - start) * 1000)
     outcome = "blocked" if inp.blocked else _outcome(flags)  # a fail-closed guard outage blocks without a block flag

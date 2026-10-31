@@ -723,3 +723,27 @@
 .interpreted em {
   color: var(--ink-2);
 }
+
+/* ---------- versions and freshness ---------- */
+.slip-ver {
+  display: block;
+  font: 400 0.66rem var(--mono);
+  color: var(--ink-3);
+}
+.slip-stale {
+  margin: 0.3rem 0 0;
+  padding: 0.3rem 0.6rem;
+  background: rgb(181 113 12 / 0.1);
+  border-left: 3px solid var(--warn);
+  font: 400 0.74rem var(--mono);
+  color: var(--warn);
+}
+.scope-pick input[type="date"] {
+  padding: 0.3rem;
+  background: #262520;
+  border: 1px solid #5d564a;
+  border-radius: 3px;
+  color: #e8dfc8;
+  font: 400 0.8rem var(--serif);
+  color-scheme: dark;
+}

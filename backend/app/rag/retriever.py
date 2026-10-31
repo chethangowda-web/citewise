@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
@@ -18,19 +19,31 @@ class Retrieved:
     content: str
     similarity: float  # cosine similarity to the query (0..1), used for the refusal threshold
     score: float  # ordering score: RRF value, or the reranker's score when reranking is on
+    version: int = 1
+    updated: datetime | None = None  # effective date if the document has one, else when it was filed
+
+
+def document_updated(doc: Document) -> datetime:
+    if doc.effective_date is not None:
+        return datetime(doc.effective_date.year, doc.effective_date.month, doc.effective_date.day, tzinfo=timezone.utc)
+    return doc.created_at
 
 
 def _row(chunk: Chunk, doc: Document, distance: float, score: float) -> Retrieved:
-    return Retrieved(chunk.id, doc.title, doc.source, chunk.content, similarity=1 - float(distance), score=score)
+    return Retrieved(
+        chunk.id, doc.title, doc.source, chunk.content, similarity=1 - float(distance), score=score,
+        version=doc.version, updated=document_updated(doc),
+    )
 
 
 def visible_to(viewer_id: int | None):
     """Shared documents (no owner), the viewer's own, and documents of teams the viewer belongs to."""
+    current = Document.status == "current"  # superseded versions are kept for history, never searched
     shared = and_(Document.owner_id.is_(None), Document.team_id.is_(None))
     if viewer_id is None:
-        return shared
+        return and_(current, shared)
     teams = select(TeamMember.team_id).where(TeamMember.user_id == viewer_id)
-    return or_(shared, Document.owner_id == viewer_id, Document.team_id.in_(teams))
+    return and_(current, or_(shared, Document.owner_id == viewer_id, Document.team_id.in_(teams)))
 
 
 def vector_search(db: Session, query_vec: list[float], k: int, viewer_id: int | None = None) -> list[Retrieved]:

@@ -118,12 +118,25 @@ export function TurnView({ turn, selected, onSelect }: { turn: Turn; selected: b
                       }}
                     >
                       <span className="slip-no">{s.index}</span>
-                      <span className="slip-title">{s.document}</span>
+                      <span className="slip-title">
+                        {s.document}
+                        {s.updated_at && (
+                          <small className="slip-ver">
+                            {(s.version ?? 1) > 1 ? `v${s.version} · ` : ''}
+                            {s.updated_at}
+                          </small>
+                        )}
+                      </span>
                       <span className="gauge" title={`Similarity ${s.similarity}`}>
                         <span style={{ width: `${Math.round(Math.min(1, s.similarity) * 100)}%` }} />
                       </span>
                       <span className="slip-pct">{Math.round(s.similarity * 100)}%</span>
                     </button>
+                    {s.stale && (
+                      <p className="slip-stale" data-testid="stale">
+                        ⚠ Last updated {s.updated_at}. Check that this is still the current policy.
+                      </p>
+                    )}
                     <blockquote className={open.has(s.index) ? 'open' : ''}>{s.snippet.replace(/^#.*\n+/, '')}</blockquote>
                   </div>
                 ))}

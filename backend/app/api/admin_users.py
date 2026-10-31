@@ -126,8 +126,29 @@ def all_documents(db: Session = Depends(get_db)):
             "id": d.id, "title": d.title, "source": d.source, "chunks": len(d.chunks), "scope": scope,
             "owner": emails.get(d.owner_id), "team": teams.get(d.team_id),
             "quarantined": sum(c.quarantined for c in d.chunks), "created_at": d.created_at.isoformat(),
+            "version": d.version, "status": d.status,
+            "effective_date": d.effective_date.isoformat() if d.effective_date else None,
         })
     return out
+
+
+@router.post("/documents/{doc_id}/restore")
+def restore_version(doc_id: int, db: Session = Depends(get_db)):
+    """Make an archived version current again; the version it replaces is archived in its place."""
+    doc = db.get(Document, doc_id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    if doc.status == "current":
+        raise HTTPException(409, "This version is already current")
+    owner = Document.owner_id.is_(None) if doc.owner_id is None else Document.owner_id == doc.owner_id
+    team = Document.team_id.is_(None) if doc.team_id is None else Document.team_id == doc.team_id
+    current = db.scalar(select(Document).where(Document.source == doc.source, owner, team, Document.status == "current"))
+    if current is not None:
+        current.status = "superseded"
+        db.flush()  # free the unique slot first
+    doc.status = "current"
+    db.commit()
+    return {"id": doc.id, "version": doc.version, "status": doc.status}
 
 
 # Role names, for the console's dropdown

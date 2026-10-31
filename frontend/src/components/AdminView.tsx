@@ -6,6 +6,7 @@ import {
   adminDeleteUser,
   adminDocuments,
   adminRemoveMember,
+  adminRestore,
   adminSetRole,
   adminTeams,
   adminUsers,
@@ -188,6 +189,7 @@ export function AdminView({ meId }: { meId: number }) {
           <thead>
             <tr>
               <th>Document</th>
+              <th>Version</th>
               <th>Who can see it</th>
               <th>Passages</th>
               <th />
@@ -196,18 +198,28 @@ export function AdminView({ meId }: { meId: number }) {
           <tbody>
             {docs.length === 0 && (
               <tr>
-                <td colSpan={4}>No documents.</td>
+                <td colSpan={5}>No documents.</td>
               </tr>
             )}
             {docs.map((d) => (
               <tr key={d.id}>
                 <td>{d.title}</td>
+                <td>
+                  v{d.version}
+                  {d.status === 'superseded' && <em> · archived</em>}
+                  {d.effective_date && <small> · effective {d.effective_date}</small>}
+                </td>
                 <td>{d.scope === 'shared' ? 'Everyone' : d.scope === 'team' ? `Team ${d.team}` : `Only ${d.owner ?? 'its owner'}`}</td>
                 <td>
                   {d.chunks}
                   {d.quarantined > 0 && ` (${d.quarantined} quarantined)`}
                 </td>
                 <td>
+                  {d.status === 'superseded' && (
+                    <button aria-label={`Restore version ${d.version} of ${d.title}`} onClick={() => void act(() => adminRestore(d.id))}>
+                      Restore
+                    </button>
+                  )}
                   <button
                     className="admin-del"
                     aria-label={`Delete ${d.title}`}

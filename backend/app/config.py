@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     rerank_enabled: bool = False  # cross-encoder reranking of the fused candidates
     rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
     rerank_candidates: int = 20
+    stale_after_days: int = 365  # an answer citing a document older than this carries an outdated-source warning; 0 = off
     chunk_size: int = 800
     chunk_overlap: int = 120
 

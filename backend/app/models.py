@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, false, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, false, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,16 +52,22 @@ class Document(Base):
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # Re-uploading a changed file keeps the old text as a superseded version that is never searched.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    status: Mapped[str] = mapped_column(String(12), default="current", server_default="current")  # current | superseded
+    effective_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # when the policy took effect, if known
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 
 
-# A source name is unique within one scope (shared, one user's private files, or one team's files).
+# Among current documents a source name is unique within one scope (shared, one user's files, or one team's).
 Index(
     "uq_documents_scope_source",
     func.coalesce(Document.owner_id, 0), func.coalesce(Document.team_id, 0), Document.source,
     unique=True,
+    postgresql_where=(Document.status == "current"),
 )
 
 

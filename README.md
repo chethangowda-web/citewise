@@ -85,6 +85,7 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `API_KEY` | empty | If set, clients must send `X-API-Key` |
 | `AUTH_ENABLED` | `false` | Turn on accounts: every call except `/health` and `/auth/*` needs a Bearer token, uploads are private to their owner, history is per user. Off = single-user mode |
 | `JWT_SECRET` | random per process | **Set a long random value when auth is on**, otherwise everyone is signed out on each restart |
+| `STALE_AFTER_DAYS` | `365` | An answer citing a document older than this carries an outdated-source warning (still answered, not refused); `0` turns it off |
 | `MEMORY_TURNS` | `3` | Earlier exchanges used to understand a follow-up ("and for contractors?"); `0` turns memory off |
 | `DEFAULT_ROLE` | `editor` | Role of new accounts: `editor` (can upload) or `viewer` (read and ask only). The first account is always admin; on a database that predates roles the oldest account is promoted at startup |
 | `ALLOW_SIGNUP` / `JWT_TTL_MINUTES` / `AUTH_RATE_LIMIT_PER_MINUTE` | `true` / `10080` / `10` | Open or close registration, token lifetime, login attempts per address per minute |
@@ -106,10 +107,11 @@ Upload your own `.pdf`, `.md` or `.txt` documents from the UI, or drop them into
 | `GET` / `GET` / `DELETE` | `/api/sessions`, `/api/sessions/{id}` | Saved conversations (the stored question is the PII-redacted one) |
 | `GET` / `PATCH` / `DELETE` | `/api/admin/users[/{id}]` | Admin only (an admin account or `X-Admin-Key`): list users, change a role, delete a user. The last admin is protected |
 | `GET` / `POST` / `DELETE` | `/api/admin/teams[/{id}]`, `PUT` / `DELETE` `/api/admin/teams/{id}/members/{user}` | Teams and membership. A team that still has documents cannot be deleted |
-| `GET` | `/api/admin/documents` | Every document and who can see it |
+| `GET` | `/api/admin/documents` | Every document and version, who can see it, and its status (`current` or `superseded`) |
+| `POST` | `/api/admin/documents/{id}/restore` | Make an archived version current again; the one it replaces is archived |
 | `POST` / `GET` | `/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/auth/config` | Accounts (only when `AUTH_ENABLED=true`) |
-| `GET` / `POST` | `/api/documents` | List, or upload (5 MB max); re-uploading a file replaces it. Responses include how many passages were quarantined. With auth on, form field `scope` is `private` (default), `team` (+ `team_id`, members only) or `shared` (admins only); viewers cannot upload |
-| `DELETE` | `/api/documents/{id}` | Remove a document and its passages. The uploader or an admin; shared documents need an admin account or `X-Admin-Key` when auth is on |
+| `GET` / `POST` | `/api/documents` | List, or upload (5 MB max); re-uploading a file replaces it. Responses include how many passages were quarantined. Optional `effective_date` (`2026-03-01`) records when a policy took effect. Re-uploading the same file with changed text keeps the old text as an archived version and files the new one as current; identical text changes nothing and costs no embedding calls. With auth on, form field `scope` is `private` (default), `team` (+ `team_id`, members only) or `shared` (admins only); viewers cannot upload |
+| `DELETE` | `/api/documents/{id}` | Remove a document, every archived version of it, and all their passages. The uploader or an admin; shared documents need an admin account or `X-Admin-Key` when auth is on |
 | `GET` | `/api/health` | Checks the database |
 | `GET` | `/api/admin/stats`, `/api/admin/logs` | Header `X-Admin-Key`; outcome split, p50/p95 latency, tokens, estimated cost, recent requests |
 
@@ -132,6 +134,7 @@ Interactive docs are at `/docs` on the backend.
 - **Streaming shows an unverified draft.** Output verification needs the whole answer (does it cite a real source?), so the live draft can briefly contain text that the final check then replaces with a refusal. The draft is PII-redacted and labelled "not yet verified", and only the verified answer is saved or audited. If that trade-off is not acceptable, use `/api/chat`, which returns nothing until verification is done.
 - **Accounts are deliberately small:** email and password only, no reset flow or email verification, and the token lives in `localStorage` (readable by any script on the page, so an XSS bug would expose it; the CSP in nginx limits that). Roles are admin, editor and viewer. A document is shared (everyone), private (its uploader) or a team's (that team's members): retrieval only searches what the asker may see, and an admin's own answers follow the same rule (the admin console lists everything, chat does not). Team documents outlive the person who uploaded them. There is no per-document sharing with individuals.
 - **Conversation memory is a rewrite, not a transcript.** A follow-up is first rewritten into a standalone question using the last few turns, and only that question is searched and answered, so the strict "answer only from the documents" prompt never sees the chat. The cost is one extra model call per follow-up. The rewrite is screened again and discarded if it is empty, too long, an attack, or the model is down, in which case your original question is used. Blocked turns are never fed back in. A rewrite can still misread an ambiguous follow-up; the UI shows "Understood as: ..." so you can see when it did.
+- **Freshness is by date, not by meaning.** The outdated-source warning compares a document's effective date (or the day it was filed) with `STALE_AFTER_DAYS`; it cannot tell that a newer policy elsewhere contradicts an older one. Archived versions are kept for history and restore but never searched, and deleting a document deletes its whole history.
 - The rate limiter is in-memory, which is correct for one process; use Redis if you scale horizontally.
 - `API_KEY` protects the API but a browser UI can't keep a secret. For a public demo, rely on rate limiting or put basic auth in front (see [docs/DEPLOY.md](docs/DEPLOY.md)).
 
@@ -280,12 +283,13 @@ What it showed:
 ## Testing
 
 ```bash
-cd backend  && python -m pytest -q                  # 128 tests: unit + real-Postgres integration, fake LLM
+cd backend  && python -m pytest -q                  # 140 tests: unit + real-Postgres integration, fake LLM
 cd frontend && npm test                             # 17 unit tests (including the SSE parser)
 cd frontend && npx playwright test                  # 18 browser tests in Chrome (dev server)
 cd frontend && E2E_AUTH=1 npx playwright test auth  # +2 sign-in tests; needs a backend started with AUTH_ENABLED=true
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test admin   # +1 admin console / team access test
 cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test memory  # +1 follow-up test against the real model
+cd frontend && E2E_AUTH=1 E2E_ADMIN_KEY=<ADMIN_API_KEY> npx playwright test versions  # +1 versioning, freshness and restore test (real model)
 cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the same suite against the nginx build
 ```
 

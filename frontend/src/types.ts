@@ -4,6 +4,9 @@ export interface Source {
   source: string
   snippet: string
   similarity: number
+  updated_at?: string
+  version?: number
+  stale?: boolean // the document is older than the server's freshness limit
 }
 
 export interface ChatResponse {
@@ -26,6 +29,10 @@ export interface DocInfo {
   private?: boolean
   scope?: Scope
   team?: string | null
+  version?: number
+  versions?: number
+  updated_at?: string
+  stale?: boolean
 }
 
 export interface UploadResult {
@@ -33,6 +40,8 @@ export interface UploadResult {
   title: string
   chunks: number
   quarantined?: number
+  version?: number
+  unchanged?: boolean
 }
 
 export type Turn = {
@@ -99,6 +108,9 @@ export interface AdminDoc {
   team: string | null
   quarantined: number
   created_at: string
+  version: number
+  status: 'current' | 'superseded'
+  effective_date: string | null
 }
 
 export interface AuthConfig {

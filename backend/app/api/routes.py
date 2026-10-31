@@ -2,12 +2,12 @@ import json
 import logging
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, optional_user, require_role
@@ -18,7 +18,7 @@ from app.models import ChatMessage, ChatSession, Document, Team, TeamMember, Use
 from app.observability import rate_limit
 from app.rag.ingest import extract_text, ingest_document, title_from_filename
 from app.rag.pipeline import ChatResult, answer_question, run_pipeline
-from app.rag.retriever import visible_to
+from app.rag.retriever import document_updated, visible_to
 
 router = APIRouter()
 log = logging.getLogger("rag.api")
@@ -41,6 +41,9 @@ class SourceOut(BaseModel):
     source: str
     snippet: str
     similarity: float
+    updated_at: str = ""
+    version: int = 1
+    stale: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -187,6 +190,13 @@ def doc_scope(d: Document) -> str:
     return "private" if d.owner_id is not None else "shared"
 
 
+def _lineage(d: Document):
+    """SQL condition matching every version of the same file in the same scope."""
+    owner = Document.owner_id.is_(None) if d.owner_id is None else Document.owner_id == d.owner_id
+    team = Document.team_id.is_(None) if d.team_id is None else Document.team_id == d.team_id
+    return (Document.source == d.source) & owner & (team)
+
+
 def _is_admin(user: User | None, admin_key: str) -> bool:
     expected = get_settings().admin_api_key
     if expected and admin_key and secrets.compare_digest(admin_key, expected):
@@ -198,14 +208,27 @@ def _is_admin(user: User | None, admin_key: str) -> bool:
 def list_documents(db: Session = Depends(get_db), user: User | None = Depends(get_current_user)):
     docs = db.scalars(select(Document).where(visible_to(_uid(user))).order_by(Document.created_at.desc())).all()
     team_names = {t.id: t.name for t in db.scalars(select(Team))}
-    return [
-        {
+    counts = {
+        (o, t, src): n
+        for o, t, src, n in db.execute(
+            select(Document.owner_id, Document.team_id, Document.source, func.count()).group_by(
+                Document.owner_id, Document.team_id, Document.source
+            )
+        )
+    }
+    days = get_settings().stale_after_days
+    now = datetime.now(timezone.utc)
+    out = []
+    for d in docs:
+        updated = document_updated(d)
+        out.append({
             "id": d.id, "title": d.title, "source": d.source, "chunks": len(d.chunks),
             "quarantined": sum(c.quarantined for c in d.chunks), "private": d.owner_id is not None or d.team_id is not None,
             "scope": doc_scope(d), "team": team_names.get(d.team_id),
-        }
-        for d in docs
-    ]
+            "version": d.version, "versions": counts.get((d.owner_id, d.team_id, d.source), 1),
+            "updated_at": updated.date().isoformat(), "stale": bool(days > 0 and (now - updated).days > days),
+        })
+    return out
 
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -216,6 +239,7 @@ def upload_document(
     file: UploadFile = File(...),
     scope: str = Form("private"),
     team_id: int | None = Form(None),
+    effective_date: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User | None = Depends(require_role("editor")),
 ):
@@ -235,6 +259,12 @@ def upload_document(
             target_team = team_id
         elif scope != "private":
             raise HTTPException(422, "scope must be private, team or shared")
+    effective: date | None = None
+    if effective_date:
+        try:
+            effective = date.fromisoformat(effective_date)
+        except ValueError:
+            raise HTTPException(422, "effective_date must look like 2026-03-01")
     name = file.filename or "upload.txt"
     if not name.lower().endswith((".pdf", ".md", ".txt")):
         raise HTTPException(400, "Only .pdf, .md and .txt files are supported")
@@ -242,13 +272,14 @@ def upload_document(
     if len(data) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, "File too large (max 5 MB)")
     try:
-        doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data), owner_id, target_team)
+        doc = ingest_document(db, name, title_from_filename(name), extract_text(name, data), owner_id, target_team, effective)
     except ValueError as e:
         raise HTTPException(422, str(e))
     held = sum(c.quarantined for c in doc.chunks)
     return {
         "id": doc.id, "title": doc.title, "chunks": len(doc.chunks), "quarantined": held,
         "private": doc.owner_id is not None or doc.team_id is not None, "scope": doc_scope(doc),
+        "version": doc.version, "unchanged": bool(getattr(doc, "unchanged", False)),
     }
 
 
@@ -273,5 +304,7 @@ def delete_document(
         raise HTTPException(404, "Document not found")
     if user is not None and not admin and doc.owner_id != user.id:
         raise HTTPException(403, "Only the uploader or an admin can remove this document")
-    db.delete(doc)
+    # Removing a document removes its whole history: leaving archived versions behind would keep text the
+    # owner meant to delete.
+    db.execute(delete(Document).where(_lineage(doc)))  # chunks go with them (ON DELETE CASCADE)
     db.commit()

@@ -166,18 +166,22 @@ export default function App() {
     }
   }
 
-  const upload = async (files: File[], target?: UploadTarget) => {
+  const upload = async (files: File[], target?: UploadTarget, effectiveDate?: string) => {
     if (!files.length) return
     setUploading(true)
     setDocError('')
     setDocNotice('')
     for (const f of files) {
       try {
-        const r = await uploadDocument(f, target)
+        const r = await uploadDocument(f, target, effectiveDate)
         if (r.quarantined) {
           setDocNotice(
             `${f.name}: ${r.quarantined} of ${r.chunks} passages look like prompt injection and were quarantined. They will not be used for answers.`,
           )
+        } else if (r.unchanged) {
+          setDocNotice(`${f.name}: identical to the filed copy, so nothing changed.`)
+        } else if (r.version && r.version > 1) {
+          setDocNotice(`${f.name} filed as version ${r.version}. The previous version is archived and no longer used for answers.`)
         }
       } catch (e) {
         setDocError(`${f.name}: ${e instanceof Error ? e.message : 'upload failed'}`)
