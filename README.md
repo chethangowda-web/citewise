@@ -327,6 +327,10 @@ cd frontend && E2E_BASE_URL=http://localhost:8080 npx playwright test   # the sa
 
 The backend integration tests run the real FastAPI app against a real Postgres (a separate `rag_test` database, created on demand) and fake only the LLM and embedding calls. They cover guardrail behaviour, the ML guard (blocking, fail-open and fail-closed), document quarantine and deletion, retrieval strategies, audit logging, auth, rate limiting, admin access, uploads and the schema migration. The browser tests drive real Chrome through the question, citation, blocking, redaction, upload, audit and mobile flows.
 
+### Backups
+
+`scripts/backup.sh` takes a verified, rotating backup of the database; `scripts/restore.sh FILE --verify` proves one restores; `scripts/test_backup.sh` checks the scripts themselves. See [docs/DEPLOY.md](docs/DEPLOY.md) for scheduling and for what a backup does and does not contain.
+
 ## CI/CD
 
 - [`ci.yml`](.github/workflows/ci.yml): on every push and PR, with no secrets and no API spend. Backend tests against a pgvector service, frontend tests plus type-checked build, then a Docker build and a smoke test through nginx (health, CSP header, SPA fallback).

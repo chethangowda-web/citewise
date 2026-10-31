@@ -46,11 +46,28 @@ Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a P
 - Set the same environment variables as above on the backend, including `DATABASE_URL`, and `TRUSTED_PROXY=true` only if the platform's edge overwrites `X-Forwarded-For`.
 - Expose only the frontend service publicly.
 
+## Backups
+
+Everything worth keeping (accounts, documents and their passages, conversations, the audit ledger) is in the Postgres database, so that is what to back up.
+
+```bash
+scripts/backup.sh                       # backups/citewise-YYYYMMDD-HHMMSS.dump, newest 14 kept (KEEP=30 to change)
+scripts/restore.sh FILE.dump --verify   # prove a backup restores: loads it into a throwaway database and shows what is in it
+scripts/restore.sh FILE.dump --replace --yes   # REPLACE the live database with it (stops the backend, restores, restarts it)
+scripts/test_backup.sh                  # self-test of all of the above, touching nothing live
+```
+
+- **Schedule it.** cron: `15 3 * * * cd /path/to/policy-rag && scripts/backup.sh`. On Windows, a daily Task Scheduler task running `bash scripts/backup.sh` in the project folder.
+- **A backup you have not restored is a hope, not a backup.** Run `--verify` on a recent file now and then, and after any upgrade.
+- **Copy them off this machine.** A backup next to the database it protects does not survive losing the disk. The files hold password hashes and every conversation, so encrypt them wherever they go; the script creates them readable by you only.
+- `--replace` loses everything written since the backup. Take a fresh backup first if anything in the database matters.
+- Documents are stored as their extracted text and embeddings, not as the original files, so a restore brings back exactly what the assistant could search, but not the original PDFs.
+
 ## Database migrations
 
 The backend applies pending migrations when it starts, so deploying a new version needs no manual database step. Two things to know:
 
-- Take a backup first (see the backup notes in this guide); a migration that fails halfway on a big table is the one case where you will want it.
+- Take a backup first (`scripts/backup.sh`, above); a migration that fails halfway on a big table is the one case where you will want it.
 - Run only one version of the app against a database at a time during an upgrade; the startup lock makes simultaneous starts safe, but an old server running against a new schema is not.
 
 ## Hardening checklist
