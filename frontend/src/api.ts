@@ -32,8 +32,16 @@ function headers(extra: Record<string, string> = {}) {
   return out
 }
 
+/** What a failed request says when the server sent no message of its own. 502-504 mean the API is not answering,
+ * which on a free host usually means it is waking from sleep. */
+export function failureText(status: number): string {
+  return [502, 503, 504].includes(status)
+    ? 'The server is waking up (free hosting sleeps when idle). Give it about a minute, then try again.'
+    : `Request failed (${status})`
+}
+
 async function fail(r: Response): Promise<never> {
-  let detail = `Request failed (${r.status})`
+  let detail = failureText(r.status)
   try {
     const body = await r.json()
     if (typeof body.detail === 'string') detail = body.detail
@@ -103,7 +111,7 @@ export const signIn = (mode: 'login' | 'register', email: string, password: stri
   }).then(async (r) => {
     if (!r.ok) {
       // a wrong password must show its message, not look like an expired session
-      let detail = `Request failed (${r.status})`
+      let detail = failureText(r.status)
       try {
         const body = await r.json()
         if (typeof body.detail === 'string') detail = body.detail

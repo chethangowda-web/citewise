@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BACKGROUND_BYTES, chatStream, uploadAndWait } from './api'
+import { BACKGROUND_BYTES, chatStream, failureText, uploadAndWait } from './api'
 
 const enc = new TextEncoder()
 
@@ -148,5 +148,22 @@ describe('uploadAndWait', () => {
     vi.stubGlobal('fetch', fetchMock)
     await expect(uploadAndWait(bigFile(), undefined, undefined, undefined, 0)).rejects.toThrow('File too large')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('failed requests', () => {
+  it('explains a gateway error as the server waking up', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>Bad Gateway</html>', { status: 502 })))
+    await expect(chatStream('q', null, {})).rejects.toThrow(/waking up/)
+  })
+
+  it('still shows the message the server sends when there is one', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Daily limit reached' }), { status: 503 })))
+    await expect(chatStream('q', null, {})).rejects.toThrow('Daily limit reached')
+  })
+
+  it('keeps the plain status for other errors', () => {
+    expect(failureText(500)).toBe('Request failed (500)')
+    expect(failureText(503)).toMatch(/waking up/)
   })
 })
