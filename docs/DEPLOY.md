@@ -46,13 +46,14 @@ Any small VM with Docker works (2 GB RAM is plenty).
    }
    ```
 
-   Caddy sets `X-Forwarded-For` itself, but nginx in this stack overwrites it with the address it sees (Caddy's), so every visitor would share one rate-limit bucket. If you add a TLS proxy in front, either terminate TLS in the nginx container instead, or change `default.conf` to trust the upstream proxy's header with `real_ip_header` and `set_real_ip_from`.
+   Caddy sets `X-Forwarded-For` itself, but nginx in this stack overwrites it with the address it sees (Caddy's), so every visitor would share one rate-limit bucket. If you add a TLS proxy in front, either terminate TLS in the nginx container instead, or set `REAL_IP_DIRECTIVES` on the frontend container to trust the proxy's header (see Option B).
 
 ## Option B: a container platform (Railway, Render, Fly)
 
 Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a Postgres with the `pgvector` extension (`CREATE EXTENSION vector` is run by the app on startup, so the database user needs permission to create it; most managed Postgres offerings with pgvector support allow this).
 
-- The `frontend` image proxies to the hostname `backend` on port 8000. Name the backend service `backend` (or edit `frontend/nginx/default.conf`).
+- The `frontend` image proxies to `backend:8000` by default. Point it elsewhere with the `BACKEND_UPSTREAM` variable (on Railway: `backend.railway.internal:8000`). The config is the template `frontend/nginx/default.conf.template`.
+- Behind a platform's HTTPS proxy every visitor would otherwise share one rate-limit bucket. Set `REAL_IP_DIRECTIVES` on the frontend, for example `set_real_ip_from 0.0.0.0/0; real_ip_header X-Real-IP;`, but only when nothing except the platform's proxy can reach the frontend.
 - Set the same environment variables as above on the backend, including `DATABASE_URL`, and `TRUSTED_PROXY=true` only if the platform's edge overwrites `X-Forwarded-For`.
 - Expose only the frontend service publicly.
 

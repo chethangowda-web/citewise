@@ -4,6 +4,8 @@ server {
     root /usr/share/nginx/html;
     index index.html;
     server_tokens off;
+    # Empty by default. Behind a TLS proxy, set REAL_IP_DIRECTIVES (see docs/DEPLOY.md) so each visitor keeps their own address.
+    include /etc/nginx/conf.d/real-ip.inc;
 
     gzip on;
     gzip_min_length 512;
@@ -20,7 +22,7 @@ server {
 
     # Server-sent events: pass bytes through as they are produced instead of buffering the whole answer.
     location = /api/chat/stream {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_buffering off;
         proxy_cache off;
@@ -32,7 +34,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_read_timeout 120s;
         proxy_set_header Host $host;

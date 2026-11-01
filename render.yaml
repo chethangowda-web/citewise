@@ -1,0 +1,80 @@
+# Render Blueprint for Citewise: Postgres (with pgvector), the API as a private service, nginx + the React app as the only public service.
+# Apply it from the Render dashboard: New > Blueprint > pick this repository. Values marked `sync: false` are asked for on that screen,
+# so no secret ever lives in this file. Plans below are the smallest that hold this app; change them on the same screen.
+databases:
+  - name: citewise-db
+    plan: basic-256mb
+    databaseName: rag
+    user: rag
+    postgresMajorVersion: "16"
+
+services:
+  - type: pserv
+    name: backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: citewise-db
+          property: connectionString
+      - key: AUTH_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ALLOW_SIGNUP
+        value: "true"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: LLM_FALLBACK
+        value: "true"
+      - key: ML_GUARD
+        value: groq
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: TRUSTED_PROXY
+        value: "true"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: AUTH_RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: USER_DAILY_TOKEN_LIMIT
+        value: "60000"
+      - key: GLOBAL_DAILY_TOKEN_LIMIT
+        value: "400000"
+      - key: STALE_AFTER_DAYS
+        value: "365"
+
+  - type: web
+    name: citewise
+    runtime: docker
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: "80"
+      - key: BACKEND_UPSTREAM
+        fromService:
+          type: pserv
+          name: backend
+          property: hostport
+      # Render's edge puts the visitor's address in True-Client-IP; without this every visitor shares one rate-limit bucket.
+      - key: REAL_IP_DIRECTIVES
+        value: "set_real_ip_from 0.0.0.0/0; real_ip_header True-Client-IP;"
