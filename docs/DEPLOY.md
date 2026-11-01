@@ -52,7 +52,8 @@ Any small VM with Docker works (2 GB RAM is plenty).
 
 Deploy `backend` and `frontend` as two services from their Dockerfiles, plus a Postgres with the `pgvector` extension (`CREATE EXTENSION vector` is run by the app on startup, so the database user needs permission to create it; most managed Postgres offerings with pgvector support allow this).
 
-- The `frontend` image proxies to `backend:8000` by default. Point it elsewhere with the `BACKEND_UPSTREAM` variable (on Railway: `backend.railway.internal:8000`). The config is the template `frontend/nginx/default.conf.template`.
+- The `frontend` image proxies to `http://backend:8000` by default. Point it elsewhere with `BACKEND_URL` (for example `https://citewise-api.onrender.com` on Render's free plans, where services have no private network) and set `BACKEND_HOST_HEADER` to that host so the platform routes the request. The config is the template `frontend/nginx/default.conf.template`.
+- `render.yaml` in the repository root sets all of this up on Render's free plans: services sleep when idle, so the first visit waits about a minute, and the free database expires after 30 days.
 - Behind a platform's HTTPS proxy every visitor would otherwise share one rate-limit bucket. Set `REAL_IP_DIRECTIVES` on the frontend, for example `set_real_ip_from 0.0.0.0/0; real_ip_header X-Real-IP;`, but only when nothing except the platform's proxy can reach the frontend.
 - Set the same environment variables as above on the backend, including `DATABASE_URL`, and `TRUSTED_PROXY=true` only if the platform's edge overwrites `X-Forwarded-For`.
 - Expose only the frontend service publicly.

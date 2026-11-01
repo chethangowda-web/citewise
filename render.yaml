@@ -1,20 +1,22 @@
-# Render Blueprint for Citewise: Postgres (with pgvector), the API as a private service, nginx + the React app as the only public service.
-# Apply it from the Render dashboard: New > Blueprint > pick this repository. Values marked `sync: false` are asked for on that screen,
-# so no secret ever lives in this file. Plans below are the smallest that hold this app; change them on the same screen.
+# Render Blueprint for Citewise, on Render's free plans (no card needed): Postgres (with pgvector), the API, and nginx + the React app.
+# Free plans mean: services sleep after ~15 idle minutes (the first visit then waits about a minute) and the free database expires
+# after 30 days. For anything long-lived, raise the plans below. Apply it from the Render dashboard: New > Blueprint > pick this
+# repository. Values marked `sync: false` are asked for on that screen, so no secret ever lives in this file.
 databases:
   - name: citewise-db
-    plan: basic-256mb
+    plan: free
     databaseName: rag
     user: rag
     postgresMajorVersion: "16"
 
 services:
-  - type: pserv
-    name: backend
+  - type: web
+    name: citewise-api
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
+    healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: "8000"
@@ -64,16 +66,16 @@ services:
     runtime: docker
     rootDir: frontend
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /healthz
     envVars:
       - key: PORT
         value: "80"
-      - key: BACKEND_UPSTREAM
-        fromService:
-          type: pserv
-          name: backend
-          property: hostport
+      # Free plans have no private network, so the site reaches the API over its public HTTPS address.
+      - key: BACKEND_URL
+        value: https://citewise-api.onrender.com
+      - key: BACKEND_HOST_HEADER
+        value: citewise-api.onrender.com
       # Render's edge puts the visitor's address in True-Client-IP; without this every visitor shares one rate-limit bucket.
       - key: REAL_IP_DIRECTIVES
         value: "set_real_ip_from 0.0.0.0/0; real_ip_header True-Client-IP;"

@@ -14,7 +14,7 @@ FROM ${NGINX_IMAGE}
 # nginx renders these templates at start-up; only the variables named in the filter are substituted.
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY nginx/real-ip.inc.template /etc/nginx/templates/real-ip.inc.template
-ENV BACKEND_UPSTREAM=backend:8000 REAL_IP_DIRECTIVES= NGINX_ENVSUBST_FILTER=^(BACKEND_UPSTREAM|REAL_IP_DIRECTIVES)$
+ENV BACKEND_URL=http://backend:8000 BACKEND_HOST_HEADER=\$host REAL_IP_DIRECTIVES= NGINX_ENVSUBST_FILTER=^(BACKEND_URL|BACKEND_HOST_HEADER|REAL_IP_DIRECTIVES)\$
 COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
